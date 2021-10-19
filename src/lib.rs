@@ -5,7 +5,7 @@ mod error;
 use adler32::RollingAdler32;
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use md5::Digest;
-use process::{Message, Receiver, Sender, Socket};
+use process::{Receiver, Sender, Socket};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::TryInto, error::Error, fs::{self, OpenOptions}, io::{BufReader, Read, Write}, net::{Shutdown, TcpListener, TcpStream}, path::Path, sync::mpsc::{self}, thread::{self, Thread}, time::Instant};
 
@@ -155,6 +155,7 @@ pub fn test_client() -> Result<(), Box<dyn Error>> {
     let encoded: Vec<u8> = bincode::serialize(&checksums).unwrap();
 
     let mut conn = LocalSocketStream::connect("/tmp/binsync.sock")?;
+
     // Write our length-prefix encoded value.
     let len = (encoded.len() as i32).to_be_bytes();
     conn.write(&len)?;
@@ -286,9 +287,16 @@ impl LocalSocketHost {
     }
 }
 
-impl Socket<Message> for LocalSocketHost {
-    fn send(&self, message: Message) -> Result<(), error::Error> {
+impl Socket for LocalSocketHost {
+    fn send<T: ?Sized>(&mut self, value: &T) -> Result<(), error::Error>
+    where
+        T: serde::Serialize,
+    {
         Ok(())
+    }
+
+    fn incoming(&self) -> interprocess::local_socket::Incoming<'_> {
+        self.listener.incoming()
     }
 }
 
@@ -304,9 +312,26 @@ impl LocalSocketClient {
     }
 }
 
-impl Socket<Message> for LocalSocketClient {
-    fn send(&self, message: Message) -> Result<(), error::Error> {
+impl Socket for LocalSocketClient {
+    fn send<T: ?Sized>(&mut self, value: &T) -> Result<(), error::Error>
+    where
+        T: serde::Serialize,
+    {
+        let encoded: Vec<u8> = bincode::serialize(&value)
+            .map_err(|_| { error::Error::new("Could not serialize.") })?;
+
+        // Write our length-prefix encoded value.
+        let len = (encoded.len() as i32).to_be_bytes();
+        self.stream.write(&len)
+            .map_err(|_| error::Error::new("Failed to write length."))?;
+        self.stream.write(&encoded)
+            .map_err(|_| error::Error::new("Failed to write encoded value."))?;
+
         Ok(())
+    }
+
+    fn incoming(&self) -> interprocess::local_socket::Incoming<'_> {
+        todo!()
     }
 }
 
@@ -326,7 +351,7 @@ pub fn sync(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
     let sender = Sender::new(&from_path, local_socket_host);
 
     let local_socket_client = LocalSocketClient::connect()?;
-    let receiver = Receiver::new(&to_path, local_socket_client);
+    let mut receiver = Receiver::new(&to_path, local_socket_client);
 
     // Generate file list.
     let file_list = sender.get_file_list();
@@ -335,7 +360,10 @@ pub fn sync(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
         println!("{} {}", file.name, file.directory);
     }
 
-    // Create generator, sender, and receiver in pipeline.
+    // Initiate the transfer.
+    receiver.initiate();
+
+    sender.listen();
 
     // if to_path.exists() {
     //     sync_file(&opts.from, &opts.to)

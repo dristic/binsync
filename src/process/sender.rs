@@ -1,6 +1,8 @@
-use std::{io::{BufReader, Read, Write}, path::{Path, PathBuf}};
+use std::{path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
+
+use crate::{error::Error};
 
 use super::{Message, Socket};
 
@@ -28,41 +30,22 @@ impl<T: Socket> Sender<T> {
         }
     }
 
-    pub fn listen(&self) {
-        for connection in self.socket.incoming() {
-            let conn = match connection {
-                Ok(connection) => {
-                    connection
-                },
-                Err(e) => {
-                    eprintln!("Incoming connection failed: {}", e);
-                    return;
-                }
-            };
-            
-            println!("Incoming connection!");
+    pub fn listen(&mut self) -> Result<(), Error> {
+        let response: Message = self.socket.receive()?;
 
-            // Read our length-prefix.
-            let mut conn = BufReader::new(conn);
-            let mut len_buf = [0 as u8; 4];
-            conn.read_exact(&mut len_buf).unwrap();
-
-            let len = i32::from_be_bytes(len_buf);
-            println!("Got length {}", len);
-            if len > 100000 {
-                panic!("Prefix length too long {:?}", len);
+        match response {
+            Message::Empty => {},
+            Message::Hello(version) =>
+            {
+                println!("Got hello {}", version)
             }
-
-            // Read and decode our value.
-            let mut block_buf = vec![0 as u8; len as usize];
-            conn.read_exact(&mut block_buf).unwrap();
-
-            let decoded: Message = bincode::deserialize(&block_buf[..]).unwrap();
-
-            println!("Client anwered: {:?}", decoded);
-
-            break;
         }
+
+        let hello = Message::Hello(2);
+
+        self.socket.send(&hello)?;
+
+        Ok(())
     }
 
     pub fn get_file_list(&self) -> FileList {

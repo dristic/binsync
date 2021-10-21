@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::{error::Error};
+
 use super::{API_VERSION, Message, Socket};
 pub struct Receiver<T: Socket> {
     destination: PathBuf,
@@ -14,9 +16,25 @@ impl<T: Socket> Receiver<T> {
         }
     }
 
-    pub fn initiate(&mut self) {
+    pub fn initiate(&mut self) -> Result<(), Error> {
         let hello = Message::Hello(API_VERSION);
 
-        self.socket.send(&hello);
+        self.socket.send(&hello)?;
+
+        Ok(())
+    }
+
+    pub fn close(&mut self) -> Result<(), Error> {
+        let response: Message = self.socket.receive()?;
+
+        match response {
+            Message::Empty => {},
+            Message::Hello(version) =>
+            {
+                println!("Client got hello {}", version)
+            }
+        }
+
+        Ok(())
     }
 }

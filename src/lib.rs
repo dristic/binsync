@@ -7,7 +7,7 @@ use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use md5::Digest;
 use process::{Receiver, Sender, Socket};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryInto, error::Error, fs::{self, OpenOptions}, io::{BufReader, Read, Write}, net::{Shutdown, TcpListener, TcpStream}, path::Path, sync::mpsc::{self}, thread::{self, Thread}, time::Instant};
+use std::{collections::HashMap, convert::TryInto, error::Error, fs::{self, OpenOptions}, io::{BufReader, Read, Write}, path::Path, sync::mpsc::{self}, thread::{self}, time::Instant};
 
 use crate::net::client::client_request;
 pub struct Opts {
@@ -16,46 +16,6 @@ pub struct Opts {
 }
 
 const CHUNK_SIZE: usize = 1100;
-
-fn handle_client(mut stream: TcpStream) {
-    let mut data = [0 as u8; 50];
-    while match stream.read(&mut data) {
-        Ok(size) => {
-            stream.write(&data[0..size]).unwrap();
-            true
-        }
-        Err(_) => {
-            eprintln!("An error occurred with peer.");
-            stream.shutdown(Shutdown::Both).unwrap();
-            false
-        }
-    } {}
-}
-
-pub fn server() -> Result<(), Box<dyn Error>> {
-    let port = 3333;
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
-
-    println!("Server listening on port {}", port);
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                println!("New connection: {}", stream.peer_addr().unwrap());
-                thread::spawn(move || {
-                    handle_client(stream);
-                });
-            }
-            Err(e) => {
-                eprintln!("Error handling stream: {}", e);
-            }
-        }
-    }
-
-    drop(listener);
-
-    Ok(())
-}
 
 pub fn client(_opts: Opts) -> Result<(), Box<dyn Error>> {
     client_request();
@@ -275,31 +235,6 @@ pub fn copy_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
 
 type IoResult<T> = std::io::Result<T>;
 
-struct LocalSocketHost {
-    listener: LocalSocketListener
-}
-
-impl LocalSocketHost {
-    fn bind() -> IoResult<LocalSocketHost> {
-        let listener = LocalSocketListener::bind("/tmp/binsync.sock")?;
-
-        Ok(LocalSocketHost { listener })
-    }
-}
-
-impl Socket for LocalSocketHost {
-    fn send<T: ?Sized>(&mut self, value: &T) -> Result<(), error::Error>
-    where
-        T: serde::Serialize,
-    {
-        Ok(())
-    }
-
-    fn incoming(&self) -> interprocess::local_socket::Incoming<'_> {
-        self.listener.incoming()
-    }
-}
-
 struct LocalSocketClient {
     stream: LocalSocketStream
 }
@@ -330,8 +265,28 @@ impl Socket for LocalSocketClient {
         Ok(())
     }
 
-    fn incoming(&self) -> interprocess::local_socket::Incoming<'_> {
-        todo!()
+    fn receive<'a, T>(&mut self) -> Result<T, error::Error>
+    where
+        T: serde::de::DeserializeOwned
+    {
+        // Read our length-prefix.
+        let mut len_buf = [0 as u8; 4];
+        self.stream.read_exact(&mut len_buf)
+            .map_err(|_| error::Error::new("Failed to read."))?;
+
+        let len = i32::from_be_bytes(len_buf);
+        println!("Got length {}", len);
+        if len > 100000 {
+            panic!("Prefix length too long {:?}", len);
+        }
+
+        // Read and decode our value.
+        let mut block_buf = vec![0 as u8; len as usize];
+        self.stream.read_exact(&mut block_buf)
+            .map_err(|_| error::Error::new("Failed to read."))?;
+
+        bincode::deserialize(&block_buf[..])
+            .map_err(|_| error::Error::new("Failed to deserialize."))
     }
 }
 
@@ -347,11 +302,14 @@ pub fn sync(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
     // Negotiate protocol (future)
 
     // Establish connection
-    let local_socket_host = LocalSocketHost::bind()?;
-    let sender = Sender::new(&from_path, local_socket_host);
+    let listener = LocalSocketListener::bind("/tmp/binsync.sock")?;
+    let client = LocalSocketClient::connect()?;
+    let host = LocalSocketClient{
+        stream: listener.accept()?
+    };
 
-    let local_socket_client = LocalSocketClient::connect()?;
-    let mut receiver = Receiver::new(&to_path, local_socket_client);
+    let mut sender = Sender::new(&from_path, host);
+    let mut receiver = Receiver::new(&to_path, client);
 
     // Generate file list.
     let file_list = sender.get_file_list();
@@ -361,9 +319,9 @@ pub fn sync(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initiate the transfer.
-    receiver.initiate();
-
-    sender.listen();
+    receiver.initiate()?;
+    sender.listen()?;
+    receiver.close()?;
 
     // if to_path.exists() {
     //     sync_file(&opts.from, &opts.to)

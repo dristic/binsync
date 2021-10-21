@@ -2,7 +2,6 @@ mod sender;
 mod receiver;
 
 use crate::error::Error;
-use interprocess::local_socket::Incoming;
 use serde::{Deserialize, Serialize};
 
 pub use sender::*;
@@ -12,6 +11,7 @@ pub const API_VERSION: u32 = 1;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
+    Empty,
     Hello(u32)
 }
 
@@ -20,5 +20,7 @@ pub trait Socket {
     where
         T: serde::Serialize;
 
-    fn incoming(&self) -> Incoming<'_>;
+    fn receive<'a, T>(&mut self) -> Result<T, Error>
+    where
+        T: serde::de::DeserializeOwned;
 }

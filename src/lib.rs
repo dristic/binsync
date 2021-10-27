@@ -29,17 +29,6 @@ struct BlockChecksum {
     sum2: [u8; 16],
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct FileInfo {
-    name: String,
-    directory: String,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct FileList {
-    files: Vec<FileInfo>,
-}
-
 struct ShutdownMessage {}
 
 pub fn test_server() -> Result<(), Box<dyn Error>> {
@@ -225,14 +214,6 @@ fn sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn copy_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
-    let from = fs::read(from)?;
-
-    fs::write(to, from)?;
-
-    Ok(())
-}
-
 type IoResult<T> = std::io::Result<T>;
 
 struct LocalSocketClient {
@@ -275,7 +256,6 @@ impl Socket for LocalSocketClient {
             .map_err(|_| error::Error::new("Failed to read."))?;
 
         let len = i32::from_be_bytes(len_buf);
-        println!("Got length {}", len);
         if len > 100000 {
             panic!("Prefix length too long {:?}", len);
         }
@@ -311,23 +291,18 @@ pub fn sync(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
     let mut sender = Sender::new(&from_path, host);
     let mut receiver = Receiver::new(&to_path, client);
 
-    // Generate file list.
-    let file_list = sender.get_file_list();
-
-    for file in file_list.files {
-        println!("{} {}", file.name, file.directory);
-    }
-
     // Initiate the transfer.
+    let sender_thread = thread::spawn(move || -> Result<(), error::Error> {
+        sender.listen()
+            .map_err(|_| error::Error::new("Failed to listen."))
+    });
+
     receiver.initiate()?;
-    sender.listen()?;
     receiver.close()?;
 
-    // if to_path.exists() {
-    //     sync_file(&opts.from, &opts.to)
-    // } else {
-    //     copy_file(&opts.from, &opts.to)
-    // }
+    sender_thread.join()
+        .unwrap()
+        .map_err(|_| error::Error::new("Thread join failed."))?;
 
     Ok(())
 }

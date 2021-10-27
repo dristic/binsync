@@ -1,21 +1,9 @@
 use std::{path::{Path, PathBuf}};
-use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::{error::Error};
 
-use super::{Message, Socket};
-
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct FileInfo {
-    pub name: String,
-    pub directory: String,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct FileList {
-    pub files: Vec<FileInfo>,
-}
+use super::{FileInfo, FileList, Message, Socket};
 
 pub struct Sender<T: Socket> {
     source: PathBuf,
@@ -31,19 +19,31 @@ impl<T: Socket> Sender<T> {
     }
 
     pub fn listen(&mut self) -> Result<(), Error> {
-        let response: Message = self.socket.receive()?;
+        loop {
+            let response: Message = self.socket.receive()?;
+            let file_list = Message::FileList(self.get_file_list());
 
-        match response {
-            Message::Empty => {},
-            Message::Hello(version) =>
-            {
-                println!("Got hello {}", version)
+            match response {
+                Message::Empty => {},
+                Message::Hello(version) =>
+                {
+                    println!("Server Hello: {}", version);
+
+                    let hello = Message::Hello(2);
+                    self.socket.send(&hello)?;
+                    self.socket.send(&file_list)?;
+                },
+                Message::FileList(_) => {},
+                Message::FileChecksums(checksums) =>
+                {
+                    println!("Server FileChecksums: {:?}", checksums);
+                },
+                Message::Shutdown =>
+                {
+                    break;
+                }
             }
         }
-
-        let hello = Message::Hello(2);
-
-        self.socket.send(&hello)?;
 
         Ok(())
     }
@@ -57,9 +57,18 @@ impl<T: Socket> Sender<T> {
             let info = entry.unwrap();
     
             if info.file_type().is_file() {
+                let name = info.file_name().to_string_lossy().to_string();
+                let directory = info
+                    .path()
+                    .strip_prefix(&self.source)
+                    .map_or_else(
+                        |_| { info.path().to_string_lossy().to_string() },
+                        |p| { p.to_string_lossy().to_string() }
+                    );
+
                 list.files.push(FileInfo{
-                    name: info.file_name().to_os_string().to_string_lossy().to_string(),
-                    directory: info.path().to_string_lossy().to_string()
+                    name,
+                    directory
                 });
             }
         }

@@ -1,26 +1,27 @@
-mod process;
-mod net;
 mod error;
+mod net;
+mod process;
 
 use adler32::RollingAdler32;
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use md5::Digest;
 use process::{Receiver, Sender, Socket};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryInto, error::Error, fs::{self, OpenOptions}, io::{BufReader, Read, Write}, path::Path, sync::mpsc::{self}, thread::{self}, time::Instant};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    error::Error,
+    fs::{self, OpenOptions},
+    io::{BufReader, Read, Write},
+    path::Path,
+    sync::mpsc::{self},
+    thread::{self},
+    time::Instant,
+};
 
-use crate::net::client::client_request;
 pub struct Opts {
     pub from: String,
     pub to: String,
-}
-
-const CHUNK_SIZE: usize = 1100;
-
-pub fn client(_opts: Opts) -> Result<(), Box<dyn Error>> {
-    client_request();
-
-    Ok(())
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -45,45 +46,44 @@ pub fn test_server() -> Result<(), Box<dyn Error>> {
 
     ctrlc::set_handler(move || {
         println!("Sending shutdown message!");
-        sender.send(ShutdownMessage{}).unwrap();
-    }).expect("Error setting Ctrl-C handler");
+        sender.send(ShutdownMessage {}).unwrap();
+    })
+    .expect("Error setting Ctrl-C handler");
 
     let listener = LocalSocketListener::bind("/tmp/binsync.sock")?;
     thread::spawn(move || {
         for connection in listener.incoming() {
             let mut conn = match connection {
-                Ok(connection) => {
-                    connection
-                },
+                Ok(connection) => connection,
                 Err(e) => {
                     eprintln!("Incoming connection failed: {}", e);
                     break;
                 }
             };
-    
+
             println!("Incoming connection!");
-    
+
             // Write our length-prefix encoded value.
             let len = (encoded.len() as i32).to_be_bytes();
             conn.write(&len).unwrap();
             conn.write(&encoded).unwrap();
-    
+
             // Read our length-prefix.
             let mut conn = BufReader::new(conn);
             let mut len_buf = [0 as u8; 4];
             conn.read_exact(&mut len_buf).unwrap();
-    
+
             let len = i32::from_be_bytes(len_buf);
             println!("Got length {} {} {}", len, len_buf.len(), encoded.len());
             if len > 100000 {
                 panic!("Prefix length too long {:?}", len);
             }
-    
+
             // Read and decode our value.
             let mut block_buf = vec![0 as u8; len as usize];
             conn.read_exact(&mut block_buf).unwrap();
             let decoded: BlockChecksum = bincode::deserialize(&block_buf[..]).unwrap();
-    
+
             println!("Client anwered: {:?}", decoded);
         }
     });
@@ -130,6 +130,8 @@ pub fn test_client() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+const CHUNK_SIZE: usize = 1100;
 
 fn sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
@@ -217,7 +219,7 @@ fn sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
 type IoResult<T> = std::io::Result<T>;
 
 struct LocalSocketClient {
-    stream: LocalSocketStream
+    stream: LocalSocketStream,
 }
 
 impl LocalSocketClient {
@@ -233,14 +235,16 @@ impl Socket for LocalSocketClient {
     where
         T: serde::Serialize,
     {
-        let encoded: Vec<u8> = bincode::serialize(&value)
-            .map_err(|_| { error::Error::new("Could not serialize.") })?;
+        let encoded: Vec<u8> =
+            bincode::serialize(&value).map_err(|_| error::Error::new("Could not serialize."))?;
 
         // Write our length-prefix encoded value.
         let len = (encoded.len() as i32).to_be_bytes();
-        self.stream.write(&len)
+        self.stream
+            .write(&len)
             .map_err(|_| error::Error::new("Failed to write length."))?;
-        self.stream.write(&encoded)
+        self.stream
+            .write(&encoded)
             .map_err(|_| error::Error::new("Failed to write encoded value."))?;
 
         Ok(())
@@ -248,11 +252,12 @@ impl Socket for LocalSocketClient {
 
     fn receive<'a, T>(&mut self) -> Result<T, error::Error>
     where
-        T: serde::de::DeserializeOwned
+        T: serde::de::DeserializeOwned,
     {
         // Read our length-prefix.
         let mut len_buf = [0 as u8; 4];
-        self.stream.read_exact(&mut len_buf)
+        self.stream
+            .read_exact(&mut len_buf)
             .map_err(|_| error::Error::new("Failed to read."))?;
 
         let len = i32::from_be_bytes(len_buf);
@@ -262,7 +267,8 @@ impl Socket for LocalSocketClient {
 
         // Read and decode our value.
         let mut block_buf = vec![0 as u8; len as usize];
-        self.stream.read_exact(&mut block_buf)
+        self.stream
+            .read_exact(&mut block_buf)
             .map_err(|_| error::Error::new("Failed to read."))?;
 
         bincode::deserialize(&block_buf[..])
@@ -284,8 +290,8 @@ pub fn sync(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
     // Establish connection
     let listener = LocalSocketListener::bind("/tmp/binsync.sock")?;
     let client = LocalSocketClient::connect()?;
-    let host = LocalSocketClient{
-        stream: listener.accept()?
+    let host = LocalSocketClient {
+        stream: listener.accept()?,
     };
 
     let mut sender = Sender::new(&from_path, host);
@@ -293,14 +299,16 @@ pub fn sync(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
 
     // Initiate the transfer.
     let sender_thread = thread::spawn(move || -> Result<(), error::Error> {
-        sender.listen()
+        sender
+            .listen()
             .map_err(|_| error::Error::new("Failed to listen."))
     });
 
-    receiver.initiate()?;
+    receiver.sync()?;
     receiver.close()?;
 
-    sender_thread.join()
+    sender_thread
+        .join()
         .unwrap()
         .map_err(|_| error::Error::new("Thread join failed."))?;
 

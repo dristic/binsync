@@ -28,18 +28,6 @@ fn main() {
                 process::exit(1);
             }
         }
-        ("server", Some(_)) => {
-            if let Err(msg) = binsync::test_server() {
-                eprintln!("Error running server: {}", msg);
-                process::exit(1);
-            }
-        }
-        ("client", Some(_)) => {
-            if let Err(msg) = binsync::test_client() {
-                eprintln!("Error running server: {}", msg);
-                process::exit(1);
-            }
-        }
         _ => {
             eprintln!("Command not found.");
             process::exit(1);

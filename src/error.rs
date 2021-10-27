@@ -2,12 +2,14 @@ use std::{error, fmt};
 
 #[derive(Debug)]
 pub struct Error {
-    details: String
+    details: String,
 }
 
 impl Error {
     pub fn new(msg: &str) -> Error {
-        Error{ details: msg.to_string() }
+        Error {
+            details: msg.to_string(),
+        }
     }
 }
 
@@ -22,4 +24,3 @@ impl error::Error for Error {
         &self.details
     }
 }
-

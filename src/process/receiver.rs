@@ -1,73 +1,94 @@
-use std::{fs::{OpenOptions}, path::{Path, PathBuf}};
+use std::{
+    fs::OpenOptions,
+    io::{Seek, SeekFrom, Write},
+    path::{Path, PathBuf},
+};
 
-use crate::{error::Error, process::FileChecksums};
+use crate::{
+    error::{self, Error},
+    process::{FileChecksums, FileInfo, SyncMessage},
+};
 
-use super::{API_VERSION, Message, Socket};
+use super::{Message, Socket, API_VERSION};
 pub struct Receiver<T: Socket> {
     destination: PathBuf,
-    socket: T
+    socket: T,
 }
 
 impl<T: Socket> Receiver<T> {
     pub fn new<P: AsRef<Path>>(destination: P, socket: T) -> Receiver<T> {
         Receiver {
             destination: destination.as_ref().to_path_buf(),
-            socket
+            socket,
         }
     }
 
-    pub fn initiate(&mut self) -> Result<(), Error> {
+    pub fn sync(&mut self) -> Result<(), Error> {
         let hello = Message::Hello(API_VERSION);
-
         self.socket.send(&hello)?;
 
-        let response: Message = self.socket.receive()?;
-        self.handle_message(&response)?;
+        loop {
+            let response: Message = self.socket.receive()?;
 
-        let response: Message = self.socket.receive()?;
-        self.handle_message(&response)?;
+            match response {
+                Message::Empty => {}
+                Message::Hello(version) => {
+                    println!("Client Hello: {}", version);
+                }
+                Message::FileList(list) => {
+                    println!("Client FileList: {:?}", list);
+
+                    for (i, file_info) in list.files.iter().enumerate() {
+                        self.sync_file(i as usize, file_info)?;
+                    }
+
+                    break;
+                }
+                Message::FileChecksums(_) => {}
+                Message::Shutdown => {
+                    break;
+                }
+            }
+        }
 
         Ok(())
     }
 
-    fn handle_message(&mut self, message: &Message) -> Result<(), Error>
-    {
-        match message {
-            Message::Empty => { Ok(()) },
-            Message::Hello(version) =>
-            {
-                println!("Client Hello: {}", version);
-                Ok(())
-            },
-            Message::FileList(list) =>
-            {
-                println!("Client FileList: {:?}", list);
+    pub fn sync_file(&mut self, id: usize, file_info: &FileInfo) -> Result<(), Error> {
+        let path = self.destination.join(Path::new(&file_info.directory));
+        let mut file = OpenOptions::new()
+            .write(true)
+            .read(true)
+            .create(true)
+            .open(path)
+            .expect("Unable to open file for reading.");
 
-                let file_info = &list.files[0];
-                let path = self.destination.join(Path::new(&file_info.directory));
-                let file = OpenOptions::new()
-                    .write(true)
-                    .read(true)
-                    .create(true)
-                    .open(path)
-                    .expect("Unable to open file for reading.");
+        println!("File length: {}", file.metadata().unwrap().len());
 
-                println!("File length: {}", file.metadata().unwrap().len());
+        let checksums = vec![];
 
-                if file.metadata().unwrap().len() == 0 {
-                    self.socket.send(&Message::FileChecksums(
-                        FileChecksums {
-                            id: 0,
-                            checksums: vec![],
-                        }
-                    ))?;
+        self.socket
+            .send(&Message::FileChecksums(FileChecksums { id, checksums }))?;
+
+        file.seek(SeekFrom::Start(0))
+            .map_err(|_| error::Error::new("Unable to seek file"))?;
+
+        loop {
+            let response: SyncMessage = self.socket.receive()?;
+
+            match response {
+                SyncMessage::FileBytes(file_bytes) => {
+                    file.write_all(&file_bytes.data)
+                        .map_err(|_| error::Error::new("Unable to write to file"))?;
                 }
-
-                Ok(())
-            },
-            Message::FileChecksums(_) => { Ok(()) },
-            Message::Shutdown => { Ok(()) },
+                SyncMessage::FileEnd => {
+                    println!("Client FileEnd");
+                    break;
+                }
+            }
         }
+
+        Ok(())
     }
 
     pub fn close(&mut self) -> Result<(), Error> {

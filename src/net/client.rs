@@ -4,7 +4,7 @@ use std::{
     str::from_utf8,
 };
 
-pub fn client_request() {
+pub fn _client_request() {
     match TcpStream::connect("localhost:3333") {
         Ok(mut stream) => {
             println!("Successfully connected to server");

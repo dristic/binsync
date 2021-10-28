@@ -6,15 +6,13 @@ use adler32::RollingAdler32;
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use md5::Digest;
 use process::{Receiver, Sender, Socket};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     convert::TryInto,
     error::Error,
     fs::{self, OpenOptions},
-    io::{BufReader, Read, Write},
+    io::{Read, Write},
     path::Path,
-    sync::mpsc::{self},
     thread::{self},
     time::Instant,
 };
@@ -24,116 +22,9 @@ pub struct Opts {
     pub to: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct BlockChecksum {
-    sum1: u32,
-    sum2: [u8; 16],
-}
+const _CHUNK_SIZE: usize = 1100;
 
-struct ShutdownMessage {}
-
-pub fn test_server() -> Result<(), Box<dyn Error>> {
-    let dig = md5::compute(b"1234567");
-
-    let checksums = BlockChecksum {
-        sum1: 12345,
-        sum2: *dig,
-    };
-
-    let encoded: Vec<u8> = bincode::serialize(&checksums).unwrap();
-
-    let (sender, receiver) = mpsc::channel::<ShutdownMessage>();
-
-    ctrlc::set_handler(move || {
-        println!("Sending shutdown message!");
-        sender.send(ShutdownMessage {}).unwrap();
-    })
-    .expect("Error setting Ctrl-C handler");
-
-    let listener = LocalSocketListener::bind("/tmp/binsync.sock")?;
-    thread::spawn(move || {
-        for connection in listener.incoming() {
-            let mut conn = match connection {
-                Ok(connection) => connection,
-                Err(e) => {
-                    eprintln!("Incoming connection failed: {}", e);
-                    break;
-                }
-            };
-
-            println!("Incoming connection!");
-
-            // Write our length-prefix encoded value.
-            let len = (encoded.len() as i32).to_be_bytes();
-            conn.write(&len).unwrap();
-            conn.write(&encoded).unwrap();
-
-            // Read our length-prefix.
-            let mut conn = BufReader::new(conn);
-            let mut len_buf = [0 as u8; 4];
-            conn.read_exact(&mut len_buf).unwrap();
-
-            let len = i32::from_be_bytes(len_buf);
-            println!("Got length {} {} {}", len, len_buf.len(), encoded.len());
-            if len > 100000 {
-                panic!("Prefix length too long {:?}", len);
-            }
-
-            // Read and decode our value.
-            let mut block_buf = vec![0 as u8; len as usize];
-            conn.read_exact(&mut block_buf).unwrap();
-            let decoded: BlockChecksum = bincode::deserialize(&block_buf[..]).unwrap();
-
-            println!("Client anwered: {:?}", decoded);
-        }
-    });
-
-    receiver.recv()?;
-
-    Ok(())
-}
-
-pub fn test_client() -> Result<(), Box<dyn Error>> {
-    let dig = md5::compute(b"1234567");
-
-    let checksums = BlockChecksum {
-        sum1: 12345,
-        sum2: *dig,
-    };
-
-    let encoded: Vec<u8> = bincode::serialize(&checksums).unwrap();
-
-    let mut conn = LocalSocketStream::connect("/tmp/binsync.sock")?;
-
-    // Write our length-prefix encoded value.
-    let len = (encoded.len() as i32).to_be_bytes();
-    conn.write(&len)?;
-    conn.write(&encoded)?;
-
-    // Read our length-prefix.
-    let mut conn = BufReader::new(conn);
-    let mut len_buf = [0 as u8; 4];
-    conn.read_exact(&mut len_buf)?;
-
-    let len = i32::from_be_bytes(len_buf);
-    println!("Got length {} {}", len, encoded.len());
-    if len > 100000 {
-        panic!("Prefix length too long {:?}", len);
-    }
-
-    // Read and decode our value.
-    let mut block_buf = vec![0 as u8; len as usize];
-    conn.read_exact(&mut block_buf)?;
-    let decoded: BlockChecksum = bincode::deserialize(&block_buf[..]).unwrap();
-
-    println!("Server anwered: {:?}", decoded);
-
-    Ok(())
-}
-
-const CHUNK_SIZE: usize = 1100;
-
-fn sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
+fn _sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
     let to_bytes = fs::read(to)?;
     println!("Read took {:?}", start.elapsed());
@@ -141,7 +32,7 @@ fn sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
     // Generate checksums for what the receiver has.
     let start = Instant::now();
     let mut checksums: HashMap<u32, (Digest, &[u8])> = HashMap::new();
-    for (_, chunk) in to_bytes.chunks(CHUNK_SIZE).enumerate() {
+    for (_, chunk) in to_bytes.chunks(_CHUNK_SIZE).enumerate() {
         let mut adler = simd_adler32::Adler32::new();
         adler.write(chunk);
 
@@ -166,10 +57,10 @@ fn sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
         adler.update(*b);
 
         let size = i - s + 1;
-        if size > CHUNK_SIZE {
+        if size > _CHUNK_SIZE {
             // The oldest byte needs to be sent.
             let removed_byte = from[s];
-            adler.remove(CHUNK_SIZE + 1, removed_byte);
+            adler.remove(_CHUNK_SIZE + 1, removed_byte);
 
             reconstructed.push(from[s]);
 
@@ -178,7 +69,7 @@ fn sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
         }
 
         let size = i - s + 1;
-        if size == CHUNK_SIZE {
+        if size == _CHUNK_SIZE {
             let hash = adler.hash();
 
             if checksums.contains_key(&hash) {
@@ -261,7 +152,7 @@ impl Socket for LocalSocketClient {
             .map_err(|_| error::Error::new("Failed to read."))?;
 
         let len = i32::from_be_bytes(len_buf);
-        if len > 100000 {
+        if len > 1000000 {
             panic!("Prefix length too long {:?}", len);
         }
 

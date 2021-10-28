@@ -1,15 +1,10 @@
-use std::{
-    fs::OpenOptions,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::{fs::OpenOptions, io::{BufReader, Read}, path::{Path, PathBuf}};
+use adler32::RollingAdler32;
 use walkdir::WalkDir;
 
 use crate::error::{self, Error};
 
-use super::{FileBytes, FileInfo, FileList, Message, Socket, SyncMessage};
-
-const CHUNK_SIZE: usize = 1100;
+use super::{CHUNK_SIZE, FileChecksums, FileInfo, FileList, Message, Socket, SyncMessage};
 
 pub struct Sender<T: Socket> {
     source: PathBuf,
@@ -40,11 +35,11 @@ impl<T: Socket> Sender<T> {
                 }
                 Message::FileList(_) => {}
                 Message::FileChecksums(checksums) => {
-                    println!("Server FileChecksums: {:?}", checksums);
+                    println!("Server FileChecksums: {}", checksums.checksums.len());
 
                     let file = &file_list.files[checksums.id];
 
-                    self.send_deltas(file)?;
+                    self.send_deltas(&checksums, file)?;
                 }
                 Message::Shutdown => {
                     break;
@@ -75,29 +70,65 @@ impl<T: Socket> Sender<T> {
         list
     }
 
-    fn send_deltas(&mut self, from: &FileInfo) -> Result<(), Error> {
+    fn send_deltas(&mut self, checksums: &FileChecksums, from: &FileInfo) -> Result<(), Error> {
+        let checksums = &checksums.checksums;
         let from_path = self.source.join(Path::new(&from.directory));
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .open(from_path)
             .map_err(|_| error::Error::new("Unable to open file for reading."))?;
 
-        loop {
-            let mut chunk: Vec<u8> = Vec::with_capacity(CHUNK_SIZE);
+        let reader = BufReader::new(file);
+        let mut buffer = Vec::with_capacity(CHUNK_SIZE);
+        let mut adler = RollingAdler32::new();
 
-            let num_read = file
-                .by_ref()
-                .take(CHUNK_SIZE as u64)
-                .read_to_end(&mut chunk)
-                .map_err(|_| error::Error::new("Unable to read from file."))?;
+        for byte in reader.bytes() {
+            let byte = byte
+                .map_err(|_| error::Error::new("Unable to read byte"))?;
 
-            self.socket
-                .send(&SyncMessage::FileBytes(FileBytes { id: 0, data: chunk }))?;
+            adler.update(byte);
+            buffer.push(byte);
 
-            if num_read < CHUNK_SIZE {
-                break;
+            if buffer.len() == CHUNK_SIZE {
+                let hash = adler.hash();
+
+                if let Some(have_digest) = checksums.get(&hash) {
+                    let dest_digest = md5::compute(&buffer);
+
+                    if have_digest.eq(&*dest_digest) {
+                        self.socket.send(&SyncMessage::FileChecksum(*have_digest))?;
+
+                        adler = RollingAdler32::new();
+                        buffer.clear();
+                    }
+                }
             }
+
+            // TODO: Non-matching chunks.
         }
+
+        self.socket.send(&SyncMessage::FileBytes(buffer))?;
+
+        // loop {
+        //     let mut chunk: Vec<u8> = Vec::with_capacity(CHUNK_SIZE);
+
+        //     let num_read = file
+        //         .by_ref()
+        //         .take(CHUNK_SIZE as u64)
+        //         .read_to_end(&mut chunk)
+        //         .map_err(|_| error::Error::new("Unable to read from file."))?;
+
+        //     for (i, b) in chunk.iter().enumerate() {
+        //         adler.update(*b);
+        //     }
+
+        //     self.socket
+        //         .send(&SyncMessage::FileBytes(FileBytes { id: 0, data: chunk }))?;
+
+        //     if num_read < CHUNK_SIZE {
+        //         break;
+        //     }
+        // }
 
         self.socket.send(&SyncMessage::FileEnd)?;
 

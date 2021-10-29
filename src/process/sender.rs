@@ -80,6 +80,7 @@ impl<T: Socket> Sender<T> {
 
         let reader = BufReader::new(file);
         let mut buffer = Vec::with_capacity(CHUNK_SIZE);
+        let mut send_buffer = Vec::with_capacity(CHUNK_SIZE);
         let mut adler = RollingAdler32::new();
 
         for byte in reader.bytes() {
@@ -95,40 +96,34 @@ impl<T: Socket> Sender<T> {
                 if let Some(have_digest) = checksums.get(&hash) {
                     let dest_digest = md5::compute(&buffer);
 
+                    if send_buffer.len() > 0 {
+                        self.socket.send(&SyncMessage::FileBytes(send_buffer))?;
+                        send_buffer = Vec::with_capacity(CHUNK_SIZE);
+                    }
+
                     if have_digest.eq(&*dest_digest) {
                         self.socket.send(&SyncMessage::FileChecksum(*have_digest))?;
 
                         adler = RollingAdler32::new();
                         buffer.clear();
                     }
+                } else {
+                    let byte = buffer.remove(0);
+                    send_buffer.push(byte);
+
+                    if send_buffer.len() == CHUNK_SIZE {
+                        self.socket.send(&SyncMessage::FileBytes(send_buffer))?;
+                        send_buffer = Vec::with_capacity(CHUNK_SIZE);
+                    }
                 }
             }
+        }
 
-            // TODO: Non-matching chunks.
+        if send_buffer.len() > 0 {
+            self.socket.send(&SyncMessage::FileBytes(send_buffer))?;
         }
 
         self.socket.send(&SyncMessage::FileBytes(buffer))?;
-
-        // loop {
-        //     let mut chunk: Vec<u8> = Vec::with_capacity(CHUNK_SIZE);
-
-        //     let num_read = file
-        //         .by_ref()
-        //         .take(CHUNK_SIZE as u64)
-        //         .read_to_end(&mut chunk)
-        //         .map_err(|_| error::Error::new("Unable to read from file."))?;
-
-        //     for (i, b) in chunk.iter().enumerate() {
-        //         adler.update(*b);
-        //     }
-
-        //     self.socket
-        //         .send(&SyncMessage::FileBytes(FileBytes { id: 0, data: chunk }))?;
-
-        //     if num_read < CHUNK_SIZE {
-        //         break;
-        //     }
-        // }
 
         self.socket.send(&SyncMessage::FileEnd)?;
 

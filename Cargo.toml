@@ -6,6 +6,7 @@ license = "Apache-2.0"
 edition = "2018"
 repository = "https://github.com/dristic/binsync"
 readme = "README.md"
+exclude = ["examples/*", ".github/"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

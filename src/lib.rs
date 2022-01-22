@@ -1,8 +1,10 @@
+mod cdc;
 mod error;
 mod net;
 mod process;
 
 use adler32::RollingAdler32;
+use cdc::{Generator, Syncer};
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use md5::Digest;
 use process::{Receiver, Sender, Socket};
@@ -23,6 +25,23 @@ pub struct Opts {
 }
 
 const _CHUNK_SIZE: usize = 1100;
+
+pub fn generate(opts: Opts) -> Result<(), Box<dyn std::error::Error>> {
+    let from_path = Path::new(&opts.from);
+    if !from_path.exists() {
+        return Err(Box::new(error::Error::new("Cannot find from file.")));
+    }
+
+    let mut generator = Generator::new(from_path);
+    let file_list = generator.get_file_list();
+    generator.generate(&file_list)?;
+
+    let to_path = Path::new(&opts.to);
+    let mut syncer = Syncer::new(to_path, generator, file_list);
+    syncer.sync()?;
+
+    Ok(())
+}
 
 fn _sync_file(from: &str, to: &str) -> Result<(), Box<dyn Error>> {
     let start = Instant::now();

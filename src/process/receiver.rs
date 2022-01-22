@@ -1,11 +1,17 @@
-use std::{collections::HashMap, ffi::OsStr, fs::{self, File, OpenOptions}, io::{Read, Seek, SeekFrom, Write}, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    fs::{self, File, OpenOptions},
+    io::{Read, Seek, SeekFrom, Write},
+    path::{Path, PathBuf},
+};
 
 use crate::{
     error::{self, Error},
     process::{FileChecksums, FileInfo, SyncMessage},
 };
 
-use super::{CHUNK_SIZE, Message, Socket, API_VERSION};
+use super::{Message, Socket, API_VERSION, CHUNK_SIZE};
 pub struct Receiver<T: Socket> {
     destination: PathBuf,
     socket: T,
@@ -92,13 +98,13 @@ impl<T: Socket> Receiver<T> {
         self.socket
             .send(&Message::FileChecksums(FileChecksums { id, checksums }))?;
 
-        let mut extension = path.extension()
+        let mut extension = path
+            .extension()
             .unwrap_or_else(|| OsStr::new(""))
             .to_os_string();
         extension.push(".tmp");
         let temp_path = path.with_extension(extension);
-        let mut new_file = File::create(&temp_path)
-            .expect("Unable to open file for reading.");
+        let mut new_file = File::create(&temp_path).expect("Unable to open file for reading.");
 
         file.seek(SeekFrom::Start(0))
             .map_err(|_| error::Error::new("Unable to seek"))?;
@@ -108,7 +114,8 @@ impl<T: Socket> Receiver<T> {
 
             match response {
                 SyncMessage::FileBytes(file_bytes) => {
-                    new_file.write_all(&file_bytes)
+                    new_file
+                        .write_all(&file_bytes)
                         .map_err(|_| error::Error::new("Unable to write to file"))?;
                 }
                 SyncMessage::FileChecksum(checksum) => {
@@ -127,10 +134,8 @@ impl<T: Socket> Receiver<T> {
             }
         }
 
-        fs::remove_file(&path)
-            .map_err(|_| error::Error::new("Unable to delete file"))?;
-        fs::rename(&temp_path, &path)
-            .map_err(|_| error::Error::new("Unable to rename file"))?;
+        fs::remove_file(&path).map_err(|_| error::Error::new("Unable to delete file"))?;
+        fs::rename(&temp_path, &path).map_err(|_| error::Error::new("Unable to rename file"))?;
 
         Ok(())
     }

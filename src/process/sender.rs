@@ -1,10 +1,14 @@
-use std::{fs::OpenOptions, io::{BufReader, Read}, path::{Path, PathBuf}};
 use adler32::RollingAdler32;
+use std::{
+    fs::OpenOptions,
+    io::{BufReader, Read},
+    path::{Path, PathBuf},
+};
 use walkdir::WalkDir;
 
 use crate::error::{self, Error};
 
-use super::{CHUNK_SIZE, FileChecksums, FileInfo, FileList, Message, Socket, SyncMessage};
+use super::{FileChecksums, FileInfo, FileList, Message, Socket, SyncMessage, CHUNK_SIZE};
 
 pub struct Sender<T: Socket> {
     source: PathBuf,
@@ -20,9 +24,10 @@ impl<T: Socket> Sender<T> {
     }
 
     pub fn listen(&mut self) -> Result<(), Error> {
+        let file_list = self.get_file_list();
+
         loop {
             let response: Message = self.socket.receive()?;
-            let file_list = self.get_file_list();
 
             match response {
                 Message::Empty => {}
@@ -31,7 +36,7 @@ impl<T: Socket> Sender<T> {
 
                     let hello = Message::Hello(2);
                     self.socket.send(&hello)?;
-                    self.socket.send(&Message::FileList(file_list))?;
+                    self.socket.send(&Message::FileList(self.get_file_list()))?;
                 }
                 Message::FileList(_) => {}
                 Message::FileChecksums(checksums) => {
@@ -84,8 +89,7 @@ impl<T: Socket> Sender<T> {
         let mut adler = RollingAdler32::new();
 
         for byte in reader.bytes() {
-            let byte = byte
-                .map_err(|_| error::Error::new("Unable to read byte"))?;
+            let byte = byte.map_err(|_| error::Error::new("Unable to read byte"))?;
 
             adler.update(byte);
             buffer.push(byte);
@@ -128,5 +132,60 @@ impl<T: Socket> Sender<T> {
         self.socket.send(&SyncMessage::FileEnd)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::{atomic::AtomicU32, Arc},
+        thread,
+    };
+
+    use super::*;
+
+    struct FakeSocket {
+        pub recvs: Arc<AtomicU32>,
+        messages: Vec<Vec<u8>>,
+    }
+
+    impl Socket for FakeSocket {
+        fn send<T: ?Sized>(&mut self, _: &T) -> Result<(), Error>
+        where
+            T: serde::Serialize,
+        {
+            Ok(())
+        }
+
+        fn receive<'a, T>(&mut self) -> Result<T, Error>
+        where
+            T: serde::de::DeserializeOwned,
+        {
+            let next = self.messages.pop().unwrap();
+
+            self.recvs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+            bincode::deserialize(&next).map_err(|_| error::Error::new("Failed to deserialize."))
+        }
+    }
+
+    #[test]
+    fn can_listen() {
+        let recvs = Arc::new(AtomicU32::new(0));
+
+        let source = Path::new(".");
+        let socket = FakeSocket {
+            recvs: recvs.clone(),
+            messages: vec![bincode::serialize(&Message::Shutdown).unwrap()],
+        };
+
+        let mut sender = Sender::new(source, socket);
+        let thread = thread::spawn(move || {
+            sender.listen().unwrap();
+        });
+
+        thread.join().unwrap();
+
+        assert_eq!(recvs.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

@@ -1,24 +1,47 @@
 use std::{
+    convert::TryFrom,
     cmp,
     fs::{self, File},
-    io::{BufWriter, Write},
+    io::{BufWriter, Write}, path::Path,
 };
 
-use rand::Rng;
+use rand::{Rng, thread_rng, distributions::Alphanumeric};
+use sha2::{Sha256, Digest};
 
-pub struct TestContext;
+pub struct TestContext {
+    base: String,
+}
 
 impl TestContext {
     pub fn new() -> TestContext {
-        fs::create_dir_all("test/in").unwrap();
-        fs::create_dir_all("test/out").unwrap();
+        let base = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(10)
+            .map(char::from)
+            .collect();
 
-        let test_file = File::create("test/in/test.bin").unwrap();
+        let context = TestContext {
+            base
+        };
+
+        fs::create_dir_all(context.path("in")).unwrap();
+        fs::create_dir_all(context.path("out")).unwrap();
+
+        context
+    }
+
+    pub fn path(&self, path: &str) -> String {
+        format!("test/{}/{}", self.base, path)
+    }
+
+    pub fn write_file(&self, path: &str, size: u64) {
+        let test_file = File::create(self.path(&path)).unwrap();
+
         let mut writer = BufWriter::new(test_file);
 
         let mut rng = rand::thread_rng();
         let mut buffer = [0; 1024];
-        let mut remaining_size = 1048576; // 1MB
+        let mut remaining_size = usize::try_from(size).unwrap();
 
         while remaining_size > 0 {
             let to_write = cmp::min(remaining_size, buffer.len());
@@ -28,13 +51,30 @@ impl TestContext {
 
             remaining_size -= to_write;
         }
+    }
 
-        TestContext
+    pub fn compare_hashes(&self, a: &str, b: &str) -> bool {
+        let source = fs::read(self.path(&a)).unwrap();
+        let dest = fs::read(self.path(&b)).unwrap();
+
+        let mut source_hasher = Sha256::new();
+        source_hasher.update(source);
+
+        let mut dest_hasher = Sha256::new();
+        dest_hasher.update(dest);
+
+        source_hasher.finalize() == dest_hasher.finalize()
     }
 }
 
 impl Drop for TestContext {
     fn drop(&mut self) {
-        fs::remove_dir_all("test").unwrap();
+        fs::remove_dir_all(self.path("")).unwrap();
+
+        // If we are the last test to finish, cleanup.
+        let is_empty = Path::new("test").read_dir().unwrap().next().is_none();
+        if is_empty {
+            fs::remove_dir("test").unwrap();
+        }
     }
 }

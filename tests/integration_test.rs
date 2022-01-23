@@ -1,32 +1,36 @@
-use std::fs;
-
-use sha2::{Digest, Sha256};
-
 extern crate binsync;
 
 mod common;
 
 #[test]
-fn test_generate() {
-    let _context = common::TestContext::new();
+fn test_empty_destination() {
+    let context = common::TestContext::new();
+
+    context.write_file("in/test.bin", 1048576); // 1MB
 
     let opts = binsync::Opts {
-        from: String::from("./test/in"),
-        to: String::from("./test/out"),
+        from: context.path("in"),
+        to: context.path("out"),
     };
 
     binsync::generate(opts).unwrap();
 
-    let source = fs::read("./test/in/test.bin").unwrap();
-    let dest = fs::read("./test/out/test.bin").unwrap();
+    assert!(context.compare_hashes("in/test.bin", "out/test.bin"));
+}
 
-    assert_eq!(source.len(), dest.len());
+#[test]
+fn test_rand_destination() {
+    let context = common::TestContext::new();
 
-    let mut source_hasher = Sha256::new();
-    source_hasher.update(source);
+    context.write_file("in/test.bin", 1048576); // 1MB
+    context.write_file("out/test.bin", 1048577); // 1MB
 
-    let mut dest_hasher = Sha256::new();
-    dest_hasher.update(dest);
+    let opts = binsync::Opts {
+        from: context.path("in"),
+        to: context.path("out"),
+    };
 
-    assert_eq!(source_hasher.finalize(), dest_hasher.finalize());
+    binsync::generate(opts).unwrap();
+
+    assert!(context.compare_hashes("in/test.bin", "out/test.bin"));
 }

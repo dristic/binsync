@@ -77,6 +77,9 @@ impl<T: ChunkMap> Syncer<T> {
                     source_file.write_all(&self.chunks.get_chunk(hash)).unwrap();
                 }
             }
+
+            let pos = source_file.seek(SeekFrom::Current(0)).unwrap();
+            source_file.set_len(pos).unwrap();
         }
 
         Ok(())

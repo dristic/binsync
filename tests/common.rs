@@ -1,12 +1,13 @@
 use std::{
-    convert::TryFrom,
     cmp,
+    convert::TryFrom,
     fs::{self, File},
-    io::{BufWriter, Write}, path::Path,
+    io::{BufWriter, Write},
+    path::Path,
 };
 
-use rand::{Rng, thread_rng, distributions::Alphanumeric};
-use sha2::{Sha256, Digest};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use sha2::{Digest, Sha256};
 
 pub struct TestContext {
     base: String,
@@ -20,9 +21,7 @@ impl TestContext {
             .map(char::from)
             .collect();
 
-        let context = TestContext {
-            base
-        };
+        let context = TestContext { base };
 
         fs::create_dir_all(context.path("in")).unwrap();
         fs::create_dir_all(context.path("out")).unwrap();

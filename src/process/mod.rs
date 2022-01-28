@@ -1,9 +1,10 @@
 mod receiver;
 mod sender;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path, thread};
 
-use crate::error::Error;
+use crate::{error::Error as BinsyncError, net::client::LocalSocketClient};
+use interprocess::local_socket::LocalSocketListener;
 use serde::{Deserialize, Serialize};
 
 pub use receiver::*;
@@ -47,11 +48,50 @@ pub enum SyncMessage {
 }
 
 pub trait Socket {
-    fn send<T: ?Sized>(&mut self, value: &T) -> Result<(), Error>
+    fn send<T: ?Sized>(&mut self, value: &T) -> Result<(), BinsyncError>
     where
         T: serde::Serialize;
 
-    fn receive<'a, T>(&mut self) -> Result<T, Error>
+    fn receive<'a, T>(&mut self) -> Result<T, BinsyncError>
     where
         T: serde::de::DeserializeOwned;
+}
+
+pub fn _sync(from: &str, to: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let to_path = Path::new(to);
+
+    // Validate options.
+    let from_path = Path::new(from);
+    if !from_path.exists() {
+        return Err(Box::new(BinsyncError::new("Cannot find from file.")));
+    }
+
+    // Negotiate protocol (future)
+
+    // Establish connection
+    let listener = LocalSocketListener::bind("/tmp/binsync.sock")?;
+    let client = LocalSocketClient::connect()?;
+    let host = LocalSocketClient {
+        stream: listener.accept()?,
+    };
+
+    let mut sender = Sender::new(&from_path, host);
+    let mut receiver = Receiver::new(&to_path, client);
+
+    // Initiate the transfer.
+    let sender_thread = thread::spawn(move || -> Result<(), BinsyncError> {
+        sender
+            .listen()
+            .map_err(|_| BinsyncError::new("Failed to listen."))
+    });
+
+    receiver.sync()?;
+    receiver.close()?;
+
+    sender_thread
+        .join()
+        .unwrap()
+        .map_err(|_| BinsyncError::new("Thread join failed."))?;
+
+    Ok(())
 }

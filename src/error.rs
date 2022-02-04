@@ -7,7 +7,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn new(msg: &str) -> Error {
+    pub fn new() -> Error {
         Error::Default
     }
 }

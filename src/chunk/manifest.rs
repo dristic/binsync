@@ -4,8 +4,10 @@ use fastcdc::FastCDC;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::process::{FileInfo, FileList};
+use crate::chunk::{FileInfo, FileList};
 
+/// The most basic building block. Holds the precomputed hash identifier along
+/// with the offset in the file and length of the chunk.
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Chunk {
     pub hash: u64,
@@ -28,6 +30,7 @@ impl Manifest {
         }
     }
 
+    /// Generates a manifest using the specified path as the root.
     pub fn from_path<P: AsRef<Path>>(path: P) -> Manifest {
         let mut list = FileList { files: Vec::new() };
 
@@ -50,6 +53,9 @@ impl Manifest {
         Manifest::from_file_list(path, &list)
     }
 
+    /// Generates a manifest of specific files using the specified path as the
+    /// base path. Use this if you want to filter only to specific files in the
+    /// directory.
     pub fn from_file_list<P: AsRef<Path>>(path: P, file_list: &FileList) -> Manifest {
         let mut manifest = Manifest::new();
         let prefix = path.as_ref().to_path_buf();

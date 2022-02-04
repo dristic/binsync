@@ -3,6 +3,8 @@ use std::process;
 use binsync::generate_manifest;
 use clap::{App, Arg, SubCommand};
 
+/// A command-line interface for the crate. Allows you to run various commands
+/// without having to compile your own rust program and inspect the outputs.
 fn main() {
     let matches = App::new("Binsync")
         .version("1.0")

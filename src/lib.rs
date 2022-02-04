@@ -14,16 +14,19 @@ pub use chunk::{manifest::Manifest, provider::BasicChunkProvider, sync::Syncer, 
 pub use error::Error as BinsyncError;
 use std::path::Path;
 
+// Helper function to generate a manifest from the given path.
 pub fn generate_manifest(from: &str) -> Result<Manifest, BinsyncError> {
     let from_path = Path::new(&from);
     if !from_path.exists() {
-        return Err(BinsyncError::FromFileNotFound);
+        return Err(BinsyncError::FileNotFound(from_path.to_path_buf()));
     }
 
     let manifest = Manifest::from_path(from_path);
     Ok(manifest)
 }
 
+/// Helper function to execute the syncer on a given path with a provider and
+/// manifest supplied.
 pub fn sync_from_manifest<T: ChunkProvider>(
     manifest: Manifest,
     provider: T,
@@ -36,6 +39,9 @@ pub fn sync_from_manifest<T: ChunkProvider>(
     Ok(())
 }
 
+/// Helper function to sync the given input and output directories using the
+/// `BasicChunkProvider`. This is inefficient but a good example to understand
+/// how the library works in order to customize for your own application.
 pub fn sync(from: &str, to: &str) -> Result<(), BinsyncError> {
     let manifest = generate_manifest(&from)?;
 

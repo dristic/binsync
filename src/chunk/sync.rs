@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     convert::TryInto,
-    fs::OpenOptions,
+    fs::{self, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
@@ -31,6 +31,12 @@ impl<T: ChunkProvider> Syncer<T> {
         for (file_path, chunks) in &self.manifest.files {
             let path = self.destination.join(Path::new(&file_path));
 
+            // Since this should be a file it should always have a parent.
+            let parent = path
+                .parent()
+                .ok_or_else(|| Error::FileNotFound(path.to_path_buf()))?;
+            fs::create_dir_all(&parent).map_err(|_| Error::AccessDenied)?;
+
             let mut source_file = OpenOptions::new()
                 .read(true)
                 .write(true)
@@ -56,6 +62,7 @@ impl<T: ChunkProvider> Syncer<T> {
 
             source_file.seek(SeekFrom::Start(0)).unwrap();
 
+            // TODO: Seek forward chunks that are already in the correct place.
             for chunk in chunks.iter() {
                 if have_chunks.contains_key(&chunk.hash) {
                     source_file

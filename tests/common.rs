@@ -34,7 +34,14 @@ impl TestContext {
     }
 
     pub fn write_file(&self, path: &str, size: u64) {
-        let test_file = File::create(self.path(&path)).unwrap();
+        let path_str = self.path(&path);
+        let path = Path::new(&path_str);
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+
+        let test_file = File::create(path).unwrap();
 
         let mut writer = BufWriter::new(test_file);
 

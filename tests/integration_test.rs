@@ -14,6 +14,17 @@ fn test_empty_destination() {
 }
 
 #[test]
+fn test_empty_destination_complex() {
+    let context = common::TestContext::new();
+
+    context.write_file("in/foo/bar/baz/test.bin", 1048576); // 1MB
+
+    binsync::sync(&context.path("in"), &context.path("out")).unwrap();
+
+    assert!(context.compare_hashes("in/foo/bar/baz/test.bin", "out/foo/bar/baz/test.bin"));
+}
+
+#[test]
 fn test_rand_destination() {
     let context = common::TestContext::new();
 

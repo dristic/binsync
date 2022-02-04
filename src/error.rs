@@ -1,9 +1,11 @@
-use std::{error, fmt};
+use std::{error, fmt, path::PathBuf};
 
 #[derive(Debug)]
 pub enum Error {
     Default,
-    FromFileNotFound,
+    FileNotFound(PathBuf),
+    DirectoryNotFound(PathBuf),
+    AccessDenied,
 }
 
 impl Error {
@@ -16,7 +18,9 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Default => write!(f, "Default"),
-            Error::FromFileNotFound => write!(f, "From file not found"),
+            Error::FileNotFound(p) => write!(f, "File not found {:?}", p),
+            Error::DirectoryNotFound(p) => write!(f, "Directory not found {:?}", p),
+            Error::AccessDenied => write!(f, "Access denied during write operation"),
         }
     }
 }
@@ -25,7 +29,9 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match self {
             Error::Default => "An undefined error has occurred.",
-            Error::FromFileNotFound => "The from folder parameter was not found.",
+            Error::FileNotFound(_) => "A given file was not found.",
+            Error::DirectoryNotFound(_) => "A given directory was not found.",
+            Error::AccessDenied => "A write or create operation failed.",
         }
     }
 }

@@ -2,6 +2,7 @@ use std::process;
 
 use binsync::generate_manifest;
 use clap::{App, Arg, SubCommand};
+use indicatif::ProgressBar;
 
 /// A command-line interface for the crate. Allows you to run various commands
 /// without having to compile your own rust program and inspect the outputs.
@@ -21,10 +22,14 @@ fn main() {
             let from = String::from(m.value_of("FROM").unwrap());
             let to = String::from(m.value_of("TO").unwrap());
 
-            if let Err(msg) = binsync::sync(&from, &to) {
+            let bar = ProgressBar::new(100);
+
+            if let Err(msg) = binsync::sync_with_progress(&from, &to, |amt| bar.inc(amt.into())) {
                 eprintln!("Error running sync: {}", msg);
                 process::exit(1);
             }
+
+            bar.finish();
         }
         ("generate", Some(m)) => {
             let from = String::from(m.value_of("FROM").unwrap());

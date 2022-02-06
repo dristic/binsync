@@ -6,6 +6,7 @@ pub enum Error {
     FileNotFound(PathBuf),
     DirectoryNotFound(PathBuf),
     AccessDenied,
+    Unspecified,
 }
 
 impl Error {
@@ -21,6 +22,7 @@ impl fmt::Display for Error {
             Error::FileNotFound(p) => write!(f, "File not found {:?}", p),
             Error::DirectoryNotFound(p) => write!(f, "Directory not found {:?}", p),
             Error::AccessDenied => write!(f, "Access denied during write operation"),
+            Error::Unspecified => write!(f, "An unspecified error occurred"),
         }
     }
 }
@@ -32,6 +34,7 @@ impl error::Error for Error {
             Error::FileNotFound(_) => "A given file was not found.",
             Error::DirectoryNotFound(_) => "A given directory was not found.",
             Error::AccessDenied => "A write or create operation failed.",
+            Error::Unspecified => "An unspecified error occurred",
         }
     }
 }

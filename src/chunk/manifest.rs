@@ -15,6 +15,20 @@ pub struct Chunk {
     pub length: u64,
 }
 
+impl PartialEq<fastcdc::Chunk> for Chunk {
+    fn eq(&self, other: &fastcdc::Chunk) -> bool {
+        self.offset == other.offset.try_into().unwrap()
+            && self.length == other.length.try_into().unwrap()
+    }
+}
+
+impl PartialEq<Chunk> for fastcdc::Chunk {
+    fn eq(&self, other: &Chunk) -> bool {
+        self.offset == other.offset.try_into().unwrap()
+            && self.length == other.length.try_into().unwrap()
+    }
+}
+
 /// Holds a list of files and which chunks exist inside those files in which
 /// order. The manifest is the source of the syncer allowing us to know what
 /// we should be syncing to.

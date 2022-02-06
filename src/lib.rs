@@ -50,3 +50,17 @@ pub fn sync(from: &str, to: &str) -> Result<(), BinsyncError> {
 
     sync_from_manifest(manifest, basic_provider, to)
 }
+
+pub fn sync_with_progress(from: &str, to: &str, on_progress: impl FnMut(u32)) -> Result<(), BinsyncError> {
+    let manifest = generate_manifest(&from)?;
+
+    let from_path = Path::new(&from);
+    let basic_provider = BasicChunkProvider::new(from_path, &manifest);
+
+    let to_path = Path::new(&to);
+    let mut syncer = Syncer::new(to_path, basic_provider, manifest);
+    syncer.on_progress(on_progress);
+    syncer.sync()?;
+
+    Ok(())
+}

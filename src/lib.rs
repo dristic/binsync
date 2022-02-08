@@ -51,7 +51,11 @@ pub fn sync(from: &str, to: &str) -> Result<(), BinsyncError> {
     sync_from_manifest(manifest, basic_provider, to)
 }
 
-pub fn sync_with_progress(from: &str, to: &str, on_progress: impl FnMut(u32)) -> Result<(), BinsyncError> {
+pub fn sync_with_progress(
+    from: &str,
+    to: &str,
+    on_progress: impl FnMut(u32),
+) -> Result<(), BinsyncError> {
     let manifest = generate_manifest(&from)?;
 
     let from_path = Path::new(&from);

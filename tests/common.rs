@@ -11,6 +11,8 @@ use sha2::{Digest, Sha256};
 
 pub struct TestContext {
     base: String,
+    /// Set to true to test assertion failures by keeping the files in the dir.
+    pub keep_files: bool,
 }
 
 impl TestContext {
@@ -21,7 +23,10 @@ impl TestContext {
             .map(char::from)
             .collect();
 
-        let context = TestContext { base };
+        let context = TestContext {
+            base,
+            keep_files: false,
+        };
 
         fs::create_dir_all(context.path("in")).unwrap();
         fs::create_dir_all(context.path("out")).unwrap();
@@ -53,7 +58,7 @@ impl TestContext {
             let to_write = cmp::min(remaining_size, buffer.len());
             let buffer = &mut buffer[..to_write];
             rng.fill(buffer);
-            writer.write(buffer).unwrap();
+            writer.write_all(buffer).unwrap();
 
             remaining_size -= to_write;
         }
@@ -75,7 +80,9 @@ impl TestContext {
 
 impl Drop for TestContext {
     fn drop(&mut self) {
-        fs::remove_dir_all(self.path("")).unwrap();
+        if !self.keep_files {
+            fs::remove_dir_all(self.path("")).unwrap();
+        }
 
         // If we are the last test to finish, cleanup.
         let is_empty = Path::new("test").read_dir().unwrap().next().is_none();

@@ -24,7 +24,9 @@ fn main() {
 
             let bar = ProgressBar::new(100);
 
-            if let Err(msg) = binsync::sync_with_progress(&from, &to, |amt| bar.inc(amt.into())) {
+            if let Err(msg) =
+                binsync::sync_with_progress(&from, &to, |amt| bar.set_position(amt.into()))
+            {
                 eprintln!("Error running sync: {}", msg);
                 process::exit(1);
             }

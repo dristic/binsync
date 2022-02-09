@@ -4,6 +4,8 @@ use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
+    sync::{Arc, Condvar, Mutex},
+    thread::{self, JoinHandle},
 };
 
 use crate::Manifest;
@@ -83,16 +85,109 @@ impl ChunkProvider for BasicChunkProvider {
 /// chunks based on the manifest passed in so it does not read the same chunk
 /// more than once. This is a great deal more efficient than the basic provider.
 pub struct CachingChunkProvider {
-    chunks: HashMap<u64, ProviderChunk>,
+    chunks: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
+    jobs: Arc<Mutex<HashMap<u64, Arc<(Mutex<bool>, Condvar)>>>>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl CachingChunkProvider {
+    pub fn new<P: AsRef<Path>>(path: P, manifest: &Manifest) -> CachingChunkProvider {
+        let to_fetch = convert_manifest_to_map(path, manifest);
+
+        // Convert the manifest into a list of jobs to be fulfilled.
+        let mut jobs = HashMap::new();
+        for key in to_fetch.keys() {
+            jobs.insert(key.clone(), Arc::new((Mutex::new(false), Condvar::new())));
+        }
+
+        let chunks = Arc::new(Mutex::new(HashMap::new()));
+        let jobs = Arc::new(Mutex::new(jobs));
+
+        let data = Arc::clone(&chunks);
+        let data_jobs = Arc::clone(&jobs);
+
+        // Spawn a thread that will run through the chunk list and start copying
+        // chunk data into memory.
+        let handle = thread::spawn(move || {
+            for (hash, chunk) in to_fetch {
+                let mut file = File::open(&chunk.file).unwrap();
+                let mut buffer = vec![0; chunk.length.try_into().unwrap()];
+
+                file.seek(SeekFrom::Start(chunk.offset)).unwrap();
+                file.read_exact(&mut buffer).unwrap();
+
+                // Insert the data into the hash map and notify any waiting
+                // consumers that the data is now available.
+                // TODO: Multiple arc hash maps, one with arc data, is a little
+                // complex. We could replace all this with a single hash map
+                // of structs that hold all the relevant information.
+                data.lock().unwrap().insert(hash, buffer);
+                if let Some(pair) = data_jobs.lock().unwrap().remove(&hash) {
+                    let mut result = pair.0.lock().unwrap();
+                    *result = true;
+                    pair.1.notify_all();
+                }
+            }
+
+            // TODO: Provide a way to early exit if the program needs to stop.
+        });
+
+        CachingChunkProvider {
+            chunks,
+            jobs,
+            handle: Some(handle),
+        }
+    }
 }
 
 impl ChunkProvider for CachingChunkProvider {
     fn chunk_exists(&self, key: &u64) -> bool {
-        self.chunks.contains_key(key)
+        self.chunks.lock().unwrap().contains_key(key)
     }
 
-    fn get_chunk(&self, _key: &u64) -> Vec<u8> {
-        todo!()
+    fn get_chunk(&self, key: &u64) -> Vec<u8> {
+        // First read the map and see if the data is already in the cache.
+        let chunks = self.chunks.lock().unwrap();
+        if let Some(data) = chunks.get(key) {
+            return data.to_owned();
+        }
+        drop(chunks);
+
+        // Since we did not find the data, we need to wait for the data to
+        // become available.
+        let pair = {
+            let mut jobs = self.jobs.lock().unwrap();
+            match jobs.entry(key.clone()) {
+                std::collections::hash_map::Entry::Occupied(entry) => Some(Arc::clone(&entry.get().clone())),
+                std::collections::hash_map::Entry::Vacant(_) => None,
+            }
+        };
+
+        if let Some(pair) = pair {
+            let lock = pair.0.lock().unwrap();
+            let result = pair.1.wait(lock).unwrap();
+
+            if *result == false {
+                return Vec::new();
+            }
+
+            // Now that the data is available, return it.
+            match self.chunks.lock().unwrap().get(key) {
+                Some(data) => return data.to_owned(),
+                None => return Vec::new(),
+            }
+        }
+
+        // We did not find the data nor any pending job to get the data.
+        Vec::new()
+    }
+}
+
+impl Drop for CachingChunkProvider {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.join().unwrap();
+        }
     }
 }
 

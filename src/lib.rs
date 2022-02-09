@@ -9,11 +9,11 @@
 //!
 //! ```rust,no_run
 //! use binsync::{Manifest, BasicChunkProvider, Syncer};
-//! 
+//!
 //! let manifest = Manifest::from_path("foo/source");
-//! 
+//!
 //! let basic_provider = BasicChunkProvider::new("foo/source", &manifest);
-//! 
+//!
 //! let mut syncer = Syncer::new("foo/destination", basic_provider, manifest);
 //! syncer.sync().unwrap();
 //! ```
@@ -21,7 +21,12 @@
 mod chunk;
 mod error;
 
-pub use chunk::{manifest::Manifest, provider::BasicChunkProvider, sync::Syncer, ChunkProvider};
+pub use chunk::{
+    manifest::Manifest,
+    provider::{BasicChunkProvider, CachingChunkProvider},
+    sync::Syncer,
+    ChunkProvider,
+};
 pub use error::Error as BinsyncError;
 use std::path::Path;
 
@@ -57,7 +62,7 @@ pub fn sync(from: &str, to: &str) -> Result<(), BinsyncError> {
     let manifest = generate_manifest(&from)?;
 
     let from_path = Path::new(&from);
-    let basic_provider = BasicChunkProvider::new(from_path, &manifest);
+    let basic_provider = CachingChunkProvider::new(from_path, &manifest);
 
     sync_from_manifest(manifest, basic_provider, to)
 }

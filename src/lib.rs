@@ -8,14 +8,14 @@
 //! the contents of the destination to look like the source.
 //!
 //! ```rust,no_run
-//! use binsync;
+//! use binsync::{Manifest, BasicChunkProvider, Syncer};
 //! 
 //! let manifest = Manifest::from_path("foo/source");
 //! 
 //! let basic_provider = BasicChunkProvider::new("foo/source", &manifest);
 //! 
-//! let syncer = Syncer::new("foo/destination", basic_provider, manifest);
-//! syncer.sync()?;
+//! let mut syncer = Syncer::new("foo/destination", basic_provider, manifest);
+//! syncer.sync().unwrap();
 //! ```
 
 mod chunk;

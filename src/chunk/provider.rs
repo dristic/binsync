@@ -78,9 +78,10 @@ impl ChunkProvider for BasicChunkProvider {
     }
 }
 
-/// A memory caching chunk provider. This can help speed up syncing if files
-/// use the same chunk multiple times. It also caches file handles to lower the
-/// amount of file handle creation calls it has to make.
+/// A memory caching chunk provider. This will read chunks into memory on a
+/// separate thread and cache them in memory. It will also reference count the
+/// chunks based on the manifest passed in so it does not read the same chunk
+/// more than once. This is a great deal more efficient than the basic provider.
 pub struct CachingChunkProvider {
     chunks: HashMap<u64, ProviderChunk>,
 }

@@ -61,9 +61,7 @@ fn test_copy_destination() {
 /// This rarely happens in the other tests as chunks do not move throughout the
 /// file we are copying from/to.
 fn test_copy_destination_padded() {
-    let mut context = common::TestContext::new();
-
-    context.keep_files = true;
+    let context = common::TestContext::new();
 
     context.write_file("in/test.bin", 1048576); // 1MB
     fs::copy(context.path("in/test.bin"), context.path("out/test.bin")).unwrap();

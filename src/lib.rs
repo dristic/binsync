@@ -6,6 +6,17 @@
 //! the files and chunks in the source folder. Using the `sync` function pointed
 //! at an empty or already populated destination folder the libray will migrate
 //! the contents of the destination to look like the source.
+//!
+//! ```rust,no_run
+//! use binsync;
+//! 
+//! let manifest = Manifest::from_path("foo/source");
+//! 
+//! let basic_provider = BasicChunkProvider::new("foo/source", &manifest);
+//! 
+//! let syncer = Syncer::new("foo/destination", basic_provider, manifest);
+//! syncer.sync()?;
+//! ```
 
 mod chunk;
 mod error;

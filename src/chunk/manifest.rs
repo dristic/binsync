@@ -6,28 +6,7 @@ use walkdir::WalkDir;
 
 use crate::chunk::{FileInfo, FileList};
 
-/// The most basic building block. Holds the precomputed hash identifier along
-/// with the offset in the file and length of the chunk.
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct Chunk {
-    pub hash: u64,
-    pub offset: u64,
-    pub length: u64,
-}
-
-impl PartialEq<fastcdc::Chunk> for Chunk {
-    fn eq(&self, other: &fastcdc::Chunk) -> bool {
-        self.offset == other.offset.try_into().unwrap()
-            && self.length == other.length.try_into().unwrap()
-    }
-}
-
-impl PartialEq<Chunk> for fastcdc::Chunk {
-    fn eq(&self, other: &Chunk) -> bool {
-        self.offset == other.offset.try_into().unwrap()
-            && self.length == other.length.try_into().unwrap()
-    }
-}
+use super::Chunk;
 
 /// Holds a list of files and which chunks exist inside those files in which
 /// order. The manifest is the source of the syncer allowing us to know what

@@ -1,4 +1,4 @@
-use std::process;
+use std::{process, time::Instant};
 
 use binsync::generate_manifest;
 use clap::{App, Arg, SubCommand};
@@ -22,6 +22,8 @@ fn main() {
             let from = String::from(m.value_of("FROM").unwrap());
             let to = String::from(m.value_of("TO").unwrap());
 
+            let now = Instant::now();
+
             let bar = ProgressBar::new(100);
 
             if let Err(msg) =
@@ -32,6 +34,8 @@ fn main() {
             }
 
             bar.finish();
+
+            println!("Sync completed in {}s", now.elapsed().as_secs());
         }
         ("generate", Some(m)) => {
             let from = String::from(m.value_of("FROM").unwrap());

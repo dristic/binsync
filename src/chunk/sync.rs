@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     fs::{self, OpenOptions},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
 
@@ -10,20 +10,7 @@ use fastcdc::FastCDC;
 
 use crate::{error::Error, Manifest};
 
-use super::{manifest::Chunk, ChunkProvider};
-
-/// When planning a sync instead of performing it directly this is used to
-/// describe the operations needed to sync two folders together.
-pub struct SyncPlan {
-    pub operations: HashMap<PathBuf, Vec<Operation>>,
-}
-
-/// A single operation in a sync plan.
-pub enum Operation {
-    Seek(i64), // Since seek can go both ways it uses a signed int.
-    Copy(Chunk),
-    Fetch(u64),
-}
+use super::{Chunk, ChunkProvider, Operation, SyncPlan};
 
 /// Uses a manifest and a provider to sync data to the destination.
 pub struct Syncer<'a, T: ChunkProvider> {
@@ -106,12 +93,17 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                     }
                     None => {
                         // We need to get this chunk from our provider.
-                        operations.push(Operation::Fetch(chunk.hash));
+                        operations.push(Operation::Fetch(Chunk {
+                            hash: chunk.hash,
+                            offset: chunk.offset,
+                            length: chunk.length,
+                        }));
                     }
                 }
             }
 
-            plan.operations.insert(path.to_path_buf(), operations);
+            plan.operations
+                .insert(Path::new(&file_path).to_path_buf(), operations);
         }
 
         Ok(plan)
@@ -129,18 +121,22 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
         let sync_plan = self.plan()?;
 
+        self.provider.set_plan(&sync_plan);
+
         for (file_path, operations) in sync_plan.operations {
+            let path = self.destination.join(file_path);
+
             // Since this should be a file it should always have a parent.
-            let parent = file_path
+            let parent = path
                 .parent()
-                .ok_or_else(|| Error::FileNotFound(file_path.to_path_buf()))?;
+                .ok_or_else(|| Error::FileNotFound(path.to_path_buf()))?;
             fs::create_dir_all(&parent).map_err(|_| Error::AccessDenied)?;
 
             let mut source_file = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
-                .open(file_path)
+                .open(path)
                 .map_err(|_| Error::AccessDenied)?;
 
             let mut have_chunks = HashMap::new();
@@ -165,11 +161,13 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                 .seek(SeekFrom::Start(0))
                 .map_err(|_| Error::AccessDenied)?;
 
+            let mut writer = BufWriter::new(&source_file);
+
             // Now operate!
             for operation in &operations {
                 match operation {
                     Operation::Seek(len) => {
-                        source_file
+                        writer
                             .seek(SeekFrom::Current(*len))
                             .map_err(|_| Error::AccessDenied)?;
                     }
@@ -178,20 +176,18 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                             .get(&chunk.hash)
                             .ok_or_else(|| Error::Unspecified)?;
 
-                        source_file
-                            .write_all(data)
-                            .map_err(|_| Error::AccessDenied)?;
+                        writer.write_all(data).map_err(|_| Error::AccessDenied)?;
                     }
-                    Operation::Fetch(hash) => {
-                        source_file
-                            .write_all(&self.provider.get_chunk(hash))
+                    Operation::Fetch(chunk) => {
+                        writer
+                            .write_all(&self.provider.get_chunk(&chunk.hash))
                             .map_err(|_| Error::AccessDenied)?;
                     }
                 }
             }
 
             // Truncate the file to the correct length.
-            let pos = source_file
+            let pos = writer
                 .seek(SeekFrom::Current(0))
                 .map_err(|_| Error::AccessDenied)?;
             source_file.set_len(pos).map_err(|_| Error::AccessDenied)?;

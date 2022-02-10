@@ -10,7 +10,7 @@ use std::{
 
 use crate::Manifest;
 
-use super::ChunkProvider;
+use super::{ChunkProvider, Operation, SyncPlan};
 
 struct ProviderChunk {
     file: PathBuf,
@@ -48,19 +48,35 @@ fn convert_manifest_to_map<P: AsRef<Path>>(
 /// example or if the complexity of other chunk providers is not compatible
 /// with your application.
 pub struct BasicChunkProvider {
+    source: PathBuf,
     chunks: HashMap<u64, ProviderChunk>,
 }
 
 impl BasicChunkProvider {
-    pub fn new<P: AsRef<Path>>(path: P, manifest: &Manifest) -> BasicChunkProvider {
-        let chunks = convert_manifest_to_map(path, manifest);
-        BasicChunkProvider { chunks }
+    pub fn new<P: AsRef<Path>>(path: P) -> BasicChunkProvider {
+        BasicChunkProvider {
+            source: PathBuf::from(path.as_ref()),
+            chunks: HashMap::new(),
+        }
     }
 }
 
 impl ChunkProvider for BasicChunkProvider {
-    fn chunk_exists(&self, key: &u64) -> bool {
-        self.chunks.contains_key(key)
+    fn set_plan(&mut self, plan: &SyncPlan) {
+        for (file_path, operations) in &plan.operations {
+            for operation in operations {
+                if let Operation::Fetch(chunk) = operation {
+                    self.chunks.insert(
+                        chunk.hash,
+                        ProviderChunk {
+                            file: self.source.join(Path::new(&file_path)),
+                            offset: chunk.offset,
+                            length: chunk.length,
+                        },
+                    );
+                }
+            }
+        }
     }
 
     fn get_chunk(&self, key: &u64) -> Vec<u8> {
@@ -80,10 +96,12 @@ impl ChunkProvider for BasicChunkProvider {
     }
 }
 
-/// A memory caching chunk provider. This will read chunks into memory on a
-/// separate thread and cache them in memory. It will also reference count the
-/// chunks based on the manifest passed in so it does not read the same chunk
-/// more than once. This is a great deal more efficient than the basic provider.
+/// A memory caching chunk provider. This will attempt to do all chunk reads in
+/// one shot instead of opening the file multiple times and pre-cache the
+/// results ahead of time.
+/// 
+/// WIP - The threaded reader is not the most useful design when we are also
+/// writng and reading on the syncer at the same time.
 pub struct CachingChunkProvider {
     chunks: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
     jobs: Arc<Mutex<HashMap<u64, Arc<(Mutex<bool>, Condvar)>>>>,
@@ -141,8 +159,8 @@ impl CachingChunkProvider {
 }
 
 impl ChunkProvider for CachingChunkProvider {
-    fn chunk_exists(&self, key: &u64) -> bool {
-        self.chunks.lock().unwrap().contains_key(key)
+    fn set_plan(&mut self, plan: &SyncPlan) {
+        todo!();
     }
 
     fn get_chunk(&self, key: &u64) -> Vec<u8> {
@@ -158,7 +176,9 @@ impl ChunkProvider for CachingChunkProvider {
         let pair = {
             let mut jobs = self.jobs.lock().unwrap();
             match jobs.entry(key.clone()) {
-                std::collections::hash_map::Entry::Occupied(entry) => Some(Arc::clone(&entry.get().clone())),
+                std::collections::hash_map::Entry::Occupied(entry) => {
+                    Some(Arc::clone(&entry.get().clone()))
+                }
                 std::collections::hash_map::Entry::Vacant(_) => None,
             }
         };
@@ -194,13 +214,11 @@ impl Drop for CachingChunkProvider {
 /// A simple remote chunk provider from the given URI. Will make GET network
 /// requests against the URI with the chunk hash appended to the end. Will also
 /// attempt to cache chunks in LRU with a given memory budget.
-pub struct RemoteChunkProvider {
-    chunks: HashMap<u64, ProviderChunk>,
-}
+pub struct RemoteChunkProvider {}
 
 impl ChunkProvider for RemoteChunkProvider {
-    fn chunk_exists(&self, key: &u64) -> bool {
-        self.chunks.contains_key(key)
+    fn set_plan(&mut self, plan: &super::SyncPlan) {
+        todo!()
     }
 
     fn get_chunk(&self, _key: &u64) -> Vec<u8> {

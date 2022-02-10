@@ -12,7 +12,7 @@
 //!
 //! let manifest = Manifest::from_path("foo/source");
 //!
-//! let basic_provider = BasicChunkProvider::new("foo/source", &manifest);
+//! let basic_provider = BasicChunkProvider::new("foo/source");
 //!
 //! let mut syncer = Syncer::new("foo/destination", basic_provider, manifest);
 //! syncer.sync().unwrap();

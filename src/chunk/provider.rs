@@ -159,7 +159,7 @@ impl CachingChunkProvider {
 }
 
 impl ChunkProvider for CachingChunkProvider {
-    fn set_plan(&mut self, plan: &SyncPlan) {
+    fn set_plan(&mut self, _plan: &SyncPlan) {
         todo!();
     }
 
@@ -217,7 +217,7 @@ impl Drop for CachingChunkProvider {
 pub struct RemoteChunkProvider {}
 
 impl ChunkProvider for RemoteChunkProvider {
-    fn set_plan(&mut self, plan: &super::SyncPlan) {
+    fn set_plan(&mut self, _plan: &super::SyncPlan) {
         todo!()
     }
 

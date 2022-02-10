@@ -10,10 +10,12 @@ fn test_empty_destination() {
     let context = common::TestContext::new();
 
     context.write_file("in/test.bin", 1048576); // 1MB
+    context.write_file("in/test2.bin", 1048576); // 1MB
 
     binsync::sync(&context.path("in"), &context.path("out")).unwrap();
 
     assert!(context.compare_hashes("in/test.bin", "out/test.bin"));
+    assert!(context.compare_hashes("in/test2.bin", "out/test2.bin"));
 }
 
 #[test]

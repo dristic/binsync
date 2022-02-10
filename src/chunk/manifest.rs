@@ -29,6 +29,8 @@ impl Manifest {
 
         let prefix = path.as_ref().to_path_buf();
 
+        // TODO: Handle empty folders.
+
         for entry in WalkDir::new(&prefix) {
             let info = entry.unwrap();
 

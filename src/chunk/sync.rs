@@ -41,7 +41,10 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
     pub fn plan(&self) -> Result<SyncPlan, Error> {
         let mut plan = SyncPlan {
             operations: HashMap::new(),
+            total_ops: 0,
         };
+
+        let mut total_ops = 0;
 
         for (file_path, chunks) in &self.manifest.files {
             let mut operations = Vec::new();
@@ -100,10 +103,13 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                         }));
                     }
                 }
+
+                total_ops = total_ops + 1;
             }
 
             plan.operations
                 .insert(Path::new(&file_path).to_path_buf(), operations);
+            plan.total_ops = total_ops;
         }
 
         Ok(plan)
@@ -111,13 +117,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
     /// Exectues a sync from source to destination with the current parameters.
     pub fn sync(&mut self) -> Result<(), Error> {
-        let mut num_files: u32 = 0;
-        let total: u32 = self
-            .manifest
-            .files
-            .len()
-            .try_into()
-            .map_err(|_| Error::Unspecified)?;
+        let mut ops_completed: u32 = 0;
 
         let sync_plan = self.plan()?;
 
@@ -184,6 +184,14 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                             .map_err(|_| Error::AccessDenied)?;
                     }
                 }
+
+                ops_completed = ops_completed + 1;
+
+                // Update our progress
+                if let Some(f) = &mut self.progress {
+                    let percent = (ops_completed as f32 / sync_plan.total_ops as f32) * 100.0;
+                    (*f)(percent as u32);
+                }
             }
 
             // Truncate the file to the correct length.
@@ -191,14 +199,6 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                 .seek(SeekFrom::Current(0))
                 .map_err(|_| Error::AccessDenied)?;
             source_file.set_len(pos).map_err(|_| Error::AccessDenied)?;
-
-            // Update our percentage after this file.
-            num_files = num_files + 1;
-
-            if let Some(f) = &mut self.progress {
-                let percent: u32 = (num_files / total) * 100;
-                (*f)(percent);
-            }
         }
 
         Ok(())

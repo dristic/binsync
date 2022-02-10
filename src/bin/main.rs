@@ -1,8 +1,17 @@
-use std::{process, time::Instant};
+use std::{
+    path::Path,
+    process,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
 
-use binsync::generate_manifest;
+use binsync::{generate_manifest, BasicChunkProvider, Syncer};
 use clap::{App, Arg, SubCommand};
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 
 /// A command-line interface for the crate. Allows you to run various commands
 /// without having to compile your own rust program and inspect the outputs.
@@ -24,12 +33,63 @@ fn main() {
 
             let now = Instant::now();
 
-            let bar = ProgressBar::new(100);
+            println!("[1/2] Generating manifest from {}", from);
 
-            if let Err(msg) =
-                binsync::sync_with_progress(&from, &to, |amt| bar.set_position(amt.into()))
-            {
-                eprintln!("Error running sync: {}", msg);
+            let stop_spinner = Arc::new(AtomicBool::new(false));
+            let handle = thread::spawn({
+                let stop = stop_spinner.clone();
+                move || {
+                    let spinner = ProgressBar::new(10000);
+                    spinner.set_style(
+                        ProgressStyle::default_spinner()
+                            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
+                            .template(
+                                "{prefix:.bold.dim} [{elapsed_precise}] {spinner} {wide_msg}",
+                            ),
+                    );
+                    spinner.set_prefix("[1/2]");
+
+                    while !stop.load(Ordering::SeqCst) {
+                        spinner.inc(1);
+                        thread::sleep(Duration::from_millis(100));
+                    }
+
+                    spinner.finish_with_message("Manifest generated.");
+                }
+            });
+
+            let manifest = match generate_manifest(&from) {
+                Ok(manifest) => manifest,
+                Err(err) => {
+                    eprintln!("Failed to generate manifest: {}", err);
+                    process::exit(1);
+                }
+            };
+
+            stop_spinner.store(true, Ordering::SeqCst);
+            handle.join().unwrap();
+
+            let from_path = Path::new(&from);
+            let basic_provider = BasicChunkProvider::new(from_path);
+
+            let to_path = Path::new(&to);
+
+            println!("[2/2] Syncing files to {}", to);
+
+            let bar = ProgressBar::new(100);
+            bar.set_style(
+                ProgressStyle::default_bar()
+                    .template(
+                        "{prefix:.bold.dim} [{elapsed_precise}] [{wide_bar:.cyan/blue}] ({eta})",
+                    )
+                    .progress_chars("#>-"),
+            );
+            bar.set_prefix("[2/2]");
+
+            let mut syncer = Syncer::new(to_path, basic_provider, manifest);
+            syncer.on_progress(|amt| bar.set_position(amt.into()));
+            if let Err(err) = syncer.sync() {
+                eprintln!("Error running sync: {}", err);
                 process::exit(1);
             }
 

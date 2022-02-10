@@ -99,7 +99,7 @@ impl ChunkProvider for BasicChunkProvider {
 /// A memory caching chunk provider. This will attempt to do all chunk reads in
 /// one shot instead of opening the file multiple times and pre-cache the
 /// results ahead of time.
-/// 
+///
 /// WIP - The threaded reader is not the most useful design when we are also
 /// writng and reading on the syncer at the same time.
 pub struct CachingChunkProvider {

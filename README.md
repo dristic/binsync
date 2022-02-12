@@ -49,3 +49,9 @@ The integration tests are a great way to understand how things work. They genera
 ## Contributing
 
 Pull requests and issues are welcome. Currently the response time is best effort.
+
+For working on the crate itself, there is a simple cargo make task to format, build, and test with all features:
+
+```
+$ cargo make development
+```

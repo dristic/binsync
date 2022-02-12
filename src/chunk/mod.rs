@@ -2,6 +2,9 @@ pub mod manifest;
 pub mod provider;
 pub mod sync;
 
+#[cfg(feature = "network")]
+pub mod network;
+
 use std::{collections::HashMap, path::PathBuf, rc::Rc};
 
 use serde::{Deserialize, Serialize};
@@ -51,6 +54,23 @@ pub struct SyncPlan {
 
     /// Total number of operations in the plan.
     pub total_ops: u32,
+}
+
+impl SyncPlan {
+    /// Gets the size of all the fetch operations for this plan.
+    pub fn get_fetch_size(&self) -> u64 {
+        let mut size: u64 = 0;
+
+        for (_, operations) in &self.operations {
+            for operation in operations {
+                if let Operation::Fetch(chunk) = operation {
+                    size = size + chunk.length;
+                }
+            }
+        }
+
+        size
+    }
 }
 
 /// A single operation in a sync plan.

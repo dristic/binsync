@@ -57,9 +57,9 @@ pub fn sync(from: &str, to: &str) -> Result<(), BinsyncError> {
     let manifest = generate_manifest(&from)?;
 
     let from_path = Path::new(&from);
-    let basic_provider = CachingChunkProvider::new(from_path);
+    let provider = CachingChunkProvider::new(from_path);
 
-    sync_from_manifest(manifest, basic_provider, to)
+    sync_from_manifest(manifest, provider, to)
 }
 
 /// Helper function to sync with a callback when progress is happening. The
@@ -72,10 +72,10 @@ pub fn sync_with_progress(
     let manifest = generate_manifest(&from)?;
 
     let from_path = Path::new(&from);
-    let basic_provider = CachingChunkProvider::new(from_path);
+    let provider = CachingChunkProvider::new(from_path);
 
     let to_path = Path::new(&to);
-    let mut syncer = Syncer::new(to_path, basic_provider, manifest);
+    let mut syncer = Syncer::new(to_path, provider, manifest);
     syncer.on_progress(on_progress);
     syncer.sync()?;
 

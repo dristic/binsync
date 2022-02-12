@@ -1,4 +1,6 @@
-use std::fs;
+use std::{fs, path::Path};
+
+use binsync::{CachingChunkProvider, Syncer};
 
 extern crate binsync;
 
@@ -12,7 +14,17 @@ fn test_empty_destination() {
     context.write_file("in/test.bin", 1048576); // 1MB
     context.write_file("in/test2.bin", 1048576); // 1MB
 
-    binsync::sync(&context.path("in"), &context.path("out")).unwrap();
+    let from = context.path("in");
+    let to = context.path("out");
+
+    let manifest = binsync::generate_manifest(&from).unwrap();
+
+    let from_path = Path::new(&from);
+    let provider = CachingChunkProvider::new(from_path);
+
+    let to_path = Path::new(&to);
+    let mut syncer = Syncer::new(to_path, provider, manifest);
+    syncer.sync().unwrap();
 
     assert!(context.compare_hashes("in/test.bin", "out/test.bin"));
     assert!(context.compare_hashes("in/test2.bin", "out/test2.bin"));
@@ -53,7 +65,21 @@ fn test_copy_destination() {
     context.write_file("in/test.bin", 1048576); // 1MB
     fs::copy(context.path("in/test.bin"), context.path("out/test.bin")).unwrap();
 
-    binsync::sync(&context.path("in"), &context.path("out")).unwrap();
+    let from = context.path("in");
+    let to = context.path("out");
+
+    let manifest = binsync::generate_manifest(&from).unwrap();
+
+    let from_path = Path::new(&from);
+    let provider = CachingChunkProvider::new(from_path);
+
+    let to_path = Path::new(&to);
+    let mut syncer = Syncer::new(to_path, provider, manifest);
+
+    let plan = syncer.plan().unwrap();
+    assert_eq!(0, plan.operations.len());
+
+    syncer.sync_from_plan(&plan).unwrap();
 
     assert!(context.compare_hashes("in/test.bin", "out/test.bin"));
 }

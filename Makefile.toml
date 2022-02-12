@@ -20,6 +20,10 @@ command = "cargo"
 args = ["publish", "--dry-run"]
 dependencies = ["clean", "build", "test"]
 
+[tasks.release]
+command = "cargo"
+args = ["build", "--all-features", "--release"]
+
 [tasks.development]
 dependencies = [
     "format",

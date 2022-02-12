@@ -109,9 +109,16 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                 total_ops = total_ops + 1;
             }
 
-            plan.operations
-                .insert(Path::new(&file_path).to_path_buf(), operations);
-            plan.total_ops = total_ops;
+            // If the files are the same just skip this entirely.
+            let should_skip = !operations
+                .iter()
+                .any(|op| matches!(op, Operation::Copy(_)) || matches!(op, Operation::Fetch(_)));
+
+            if !should_skip {
+                plan.operations
+                    .insert(Path::new(&file_path).to_path_buf(), operations);
+                plan.total_ops = total_ops;
+            }
         }
 
         Ok(plan)
@@ -119,13 +126,18 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
     /// Exectues a sync from source to destination with the current parameters.
     pub fn sync(&mut self) -> Result<(), Error> {
+        let plan = self.plan()?;
+
+        self.sync_from_plan(&plan)
+    }
+
+    /// Executes a sync from the given plan.
+    pub fn sync_from_plan(&mut self, plan: &SyncPlan) -> Result<(), Error> {
         let mut ops_completed: u32 = 0;
 
-        let sync_plan = self.plan()?;
+        self.provider.set_plan(&plan);
 
-        self.provider.set_plan(&sync_plan);
-
-        for (file_path, operations) in sync_plan.operations {
+        for (file_path, operations) in &plan.operations {
             let path = self.destination.join(file_path);
 
             // Since this should be a file it should always have a parent.
@@ -144,7 +156,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
             let mut have_chunks = HashMap::new();
 
             // First load all the chunk copies into memory.
-            for operation in &operations {
+            for operation in operations {
                 if let Operation::Copy(chunk) = operation {
                     source_file
                         .seek(SeekFrom::Start(chunk.offset))
@@ -166,7 +178,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
             let mut writer = BufWriter::new(&source_file);
 
             // Now operate!
-            for operation in &operations {
+            for operation in operations {
                 match operation {
                     Operation::Seek(len) => {
                         writer
@@ -190,7 +202,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
                 // Update our progress
                 if let Some(f) = &mut self.progress {
-                    let percent = (ops_completed as f32 / sync_plan.total_ops as f32) * 100.0;
+                    let percent = (ops_completed as f32 / plan.total_ops as f32) * 100.0;
                     (*f)(percent as u32);
                 }
             }

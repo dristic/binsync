@@ -1,10 +1,18 @@
-use std::{collections::HashMap, convert::TryInto, path::Path};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use fastcdc::FastCDC;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::chunk::{FileInfo, FileList};
+use crate::{
+    chunk::{FileInfo, FileList},
+    sync::ThreadPool,
+};
 
 use super::Chunk;
 
@@ -52,34 +60,37 @@ impl Manifest {
     /// base path. Use this if you want to filter only to specific files in the
     /// directory.
     pub fn from_file_list<P: AsRef<Path>>(path: P, file_list: &FileList) -> Manifest {
-        let mut manifest = Manifest::new();
+        let manifest = Arc::new(Mutex::new(Manifest::new()));
         let prefix = path.as_ref().to_path_buf();
 
+        let pool = ThreadPool::new(4);
+
         for file_info in &file_list.files {
+            let key = file_info.directory.clone();
             let path = prefix.join(Path::new(&file_info.directory));
+            let manifest = Arc::clone(&manifest);
 
-            let contents = std::fs::read(path).unwrap();
-            let chunker = FastCDC::new(&contents, 16384, 32768, 65536);
+            pool.execute(move || {
+                let contents = std::fs::read(path).unwrap();
+                let chunker = FastCDC::new(&contents, 16384, 32768, 65536);
 
-            let key = file_info.directory.as_str();
+                for entry in chunker {
+                    let end = entry.offset + entry.length;
+                    let chunk = &contents[entry.offset..end];
 
-            for entry in chunker {
-                let end = entry.offset + entry.length;
-                let chunk = &contents[entry.offset..end];
+                    let digest = md5::compute(chunk);
+                    let hash = u64::from_le_bytes(digest[0..8].try_into().unwrap());
 
-                let digest = md5::compute(chunk);
-                let hash = u64::from_le_bytes(digest[0..8].try_into().unwrap());
+                    let mut manifest = manifest.lock().unwrap();
 
-                manifest.add_chunk(
-                    key,
-                    hash,
-                    entry.offset.try_into().unwrap(),
-                    entry.length.try_into().unwrap(),
-                );
-            }
+                    manifest.add_chunk(&key, hash, entry.offset as u64, entry.length as u64);
+                }
+            });
         }
 
-        manifest
+        drop(pool);
+
+        Arc::try_unwrap(manifest).unwrap().into_inner().unwrap()
     }
 
     fn add_chunk(&mut self, path: &str, hash: u64, offset: u64, length: u64) {

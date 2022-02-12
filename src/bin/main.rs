@@ -100,6 +100,33 @@ fn main() {
         ("generate", Some(m)) => {
             let from = String::from(m.value_of("FROM").unwrap());
 
+            let now = Instant::now();
+
+            println!("[1/1] Generating manifest from {}", from);
+
+            let stop_spinner = Arc::new(AtomicBool::new(false));
+            let handle = thread::spawn({
+                let stop = stop_spinner.clone();
+                move || {
+                    let spinner = ProgressBar::new(10000);
+                    spinner.set_style(
+                        ProgressStyle::default_spinner()
+                            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
+                            .template(
+                                "{prefix:.bold.dim} [{elapsed_precise}] {spinner} {wide_msg}",
+                            ),
+                    );
+                    spinner.set_prefix("[1/2]");
+
+                    while !stop.load(Ordering::SeqCst) {
+                        spinner.inc(1);
+                        thread::sleep(Duration::from_millis(100));
+                    }
+
+                    spinner.finish_with_message("Manifest generated.");
+                }
+            });
+
             match generate_manifest(&from) {
                 Ok(manifest) => println!("Generated manifest: {:?}", manifest),
                 Err(msg) => {
@@ -107,6 +134,11 @@ fn main() {
                     process::exit(1);
                 }
             }
+
+            stop_spinner.store(true, Ordering::SeqCst);
+            handle.join().unwrap();
+
+            println!("Manifest generated in {}s", now.elapsed().as_secs());
         }
         _ => {
             eprintln!("Command not found.");

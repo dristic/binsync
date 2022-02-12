@@ -46,6 +46,8 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
         let mut total_ops = 0;
 
+        // TODO: We could parallelize this per-file or per-slice to get better
+        // usage of the CPU cores and always be utilizing disk I/O
         for (file_path, chunks) in &self.manifest.files {
             let mut operations = Vec::new();
             let path = self.destination.join(Path::new(&file_path));
@@ -179,9 +181,8 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                         writer.write_all(data).map_err(|_| Error::AccessDenied)?;
                     }
                     Operation::Fetch(chunk) => {
-                        writer
-                            .write_all(&self.provider.get_chunk(&chunk.hash))
-                            .map_err(|_| Error::AccessDenied)?;
+                        let data = self.provider.get_chunk(&chunk.hash)?;
+                        writer.write_all(&data).map_err(|_| Error::AccessDenied)?;
                     }
                 }
 

@@ -22,7 +22,6 @@ The manifest describes the files and chunks from a given source directory. It ha
 ### Chunk Provider
 
 The chunk provider fetches chunk contents for the syncer. This is a trait that can be implemented to suit your needs. There are a few implementations provided:
-- `BasicChunkProvider` is the most basic implementation of the trait. It reads chunks from a local folder when they are requested.
 - `CachingChunkProvider` is optimal for local syncing on the same machine. It attempts to read ahead and cache chunks as quickly as possible to maximize memory and disk I/O usage.
 - `RemoteChunkProvider` is useful when the source and destination are on different machines. It works similar to the caching provider but fetches chunks from a remote base URL.
 
@@ -35,11 +34,11 @@ The syncer takes a manifest and chunk provider and runs the syncing logic to tra
 ### Example
 
 ```rust
-use binsync::{Manifest, BasicChunkProvider, Syncer};
+use binsync::{Manifest, CachingChunkProvider, Syncer};
 
 let manifest = Manifest::from_path("foo/source");
 
-let basic_provider = BasicChunkProvider::new("foo/source", &manifest);
+let basic_provider = CachingChunkProvider::new("foo/source");
 
 let mut syncer = Syncer::new("foo/destination", basic_provider, manifest);
 syncer.sync().unwrap();

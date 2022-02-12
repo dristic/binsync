@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use binsync::{generate_manifest, BasicChunkProvider, Syncer};
+use binsync::{generate_manifest, CachingChunkProvider, Syncer};
 use clap::{App, Arg, SubCommand};
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -70,7 +70,7 @@ fn main() {
             handle.join().unwrap();
 
             let from_path = Path::new(&from);
-            let basic_provider = BasicChunkProvider::new(from_path);
+            let basic_provider = CachingChunkProvider::new(from_path);
 
             let to_path = Path::new(&to);
 

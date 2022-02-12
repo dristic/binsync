@@ -8,11 +8,11 @@
 //! the contents of the destination to look like the source.
 //!
 //! ```rust,no_run
-//! use binsync::{Manifest, BasicChunkProvider, Syncer};
+//! use binsync::{Manifest, CachingChunkProvider, Syncer};
 //!
 //! let manifest = Manifest::from_path("foo/source");
 //!
-//! let basic_provider = BasicChunkProvider::new("foo/source");
+//! let basic_provider = CachingChunkProvider::new("foo/source");
 //!
 //! let mut syncer = Syncer::new("foo/destination", basic_provider, manifest);
 //! syncer.sync().unwrap();
@@ -21,12 +21,7 @@
 mod chunk;
 mod error;
 
-pub use chunk::{
-    manifest::Manifest,
-    provider::{BasicChunkProvider, CachingChunkProvider},
-    sync::Syncer,
-    ChunkProvider,
-};
+pub use chunk::{manifest::Manifest, provider::CachingChunkProvider, sync::Syncer, ChunkProvider};
 pub use error::Error as BinsyncError;
 use std::path::Path;
 
@@ -56,17 +51,18 @@ pub fn sync_from_manifest<T: ChunkProvider>(
 }
 
 /// Helper function to sync the given input and output directories using the
-/// `BasicChunkProvider`. This is inefficient but a good example to understand
-/// how the library works in order to customize for your own application.
+/// `CachingChunkProvider`.
 pub fn sync(from: &str, to: &str) -> Result<(), BinsyncError> {
     let manifest = generate_manifest(&from)?;
 
     let from_path = Path::new(&from);
-    let basic_provider = BasicChunkProvider::new(from_path);
+    let basic_provider = CachingChunkProvider::new(from_path);
 
     sync_from_manifest(manifest, basic_provider, to)
 }
 
+/// Helper function to sync with a callback when progress is happening. The
+/// progress is reported from 0 to 100.
 pub fn sync_with_progress(
     from: &str,
     to: &str,
@@ -75,7 +71,7 @@ pub fn sync_with_progress(
     let manifest = generate_manifest(&from)?;
 
     let from_path = Path::new(&from);
-    let basic_provider = BasicChunkProvider::new(from_path);
+    let basic_provider = CachingChunkProvider::new(from_path);
 
     let to_path = Path::new(&to);
     let mut syncer = Syncer::new(to_path, basic_provider, manifest);

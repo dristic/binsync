@@ -2,9 +2,11 @@ pub mod manifest;
 pub mod provider;
 pub mod sync;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, rc::Rc};
 
 use serde::{Deserialize, Serialize};
+
+use crate::BinsyncError;
 
 /// The most basic building block. Holds the precomputed hash identifier along
 /// with the offset in the file and length of the chunk.
@@ -66,6 +68,7 @@ pub trait ChunkProvider {
     /// provider to make decisions on how it wants to optimize chunk reading.
     fn set_plan(&mut self, plan: &SyncPlan);
 
-    /// Gets the raw data of the chunk.
-    fn get_chunk(&self, key: &u64) -> Vec<u8>;
+    /// Gets the raw data of the chunk. The provider may choose to modify its
+    /// internal cache when fetching a chunk.
+    fn get_chunk(&mut self, key: &u64) -> Result<Rc<Vec<u8>>, BinsyncError>;
 }

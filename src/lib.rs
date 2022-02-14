@@ -22,6 +22,9 @@ mod chunk;
 mod error;
 mod sync;
 
+#[cfg(feature = "network")]
+pub use chunk::network::RemoteChunkProvider;
+
 pub use chunk::{manifest::Manifest, provider::CachingChunkProvider, sync::Syncer, ChunkProvider};
 pub use error::Error as BinsyncError;
 use std::path::Path;

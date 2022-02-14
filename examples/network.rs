@@ -1,11 +1,9 @@
 extern crate binsync;
 
-use std::{env, error::Error, path::Path, process};
-
-use binsync::{Manifest, RemoteChunkProvider, Syncer};
-use reqwest::Url;
-
+#[cfg(feature = "network")]
 fn main() {
+    use std::{env, process};
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 3 {
@@ -19,8 +17,12 @@ fn main() {
     }
 }
 
-fn sync_network(args: Vec<String>) -> Result<(), Box<dyn Error>> {
-    let url = Url::parse(&args[1])?;
+#[cfg(feature = "network")]
+fn sync_network(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    use std::{path::Path};
+    use binsync::{Manifest, Syncer};
+
+    let url = reqwest::Url::parse(&args[1])?;
 
     let to_path = Path::new(&args[2]);
 
@@ -32,10 +34,15 @@ fn sync_network(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     let data = response.bytes()?;
 
     let manifest: Manifest = bincode::deserialize(&data)?;
-    let provider = RemoteChunkProvider::new(url.as_str());
+    let provider = binsync::RemoteChunkProvider::new(url.as_str());
 
     let mut syncer = Syncer::new(to_path, provider, manifest);
     syncer.sync()?;
 
     Ok(())
+}
+
+#[cfg(not(feature = "network"))]
+fn main () {
+    println!("Network feature is not enabled. Use --features network when running to test this out.");
 }

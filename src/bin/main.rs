@@ -70,7 +70,7 @@ fn main() {
             handle.join().unwrap();
 
             let from_path = Path::new(&from);
-            let basic_provider = CachingChunkProvider::new(from_path);
+            let provider = CachingChunkProvider::new(from_path);
 
             let to_path = Path::new(&to);
 
@@ -86,7 +86,7 @@ fn main() {
             );
             bar.set_prefix("[2/2]");
 
-            let mut syncer = Syncer::new(to_path, basic_provider, manifest);
+            let mut syncer = Syncer::new(to_path, provider, manifest);
             syncer.on_progress(|amt| bar.set_position(amt.into()));
             if let Err(err) = syncer.sync() {
                 eprintln!("Error running sync: {}", err);

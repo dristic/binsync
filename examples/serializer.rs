@@ -1,14 +1,18 @@
-use std::{
-    env,
-    fs::{self, File},
-    io::{Read, Seek, SeekFrom},
-    path::Path,
-    process,
-};
-
-use binsync::Manifest;
-
+#[cfg(feature = "network")]
 fn main() {
+    use std::{
+        collections::HashMap,
+        env,
+        fs::{self, File, OpenOptions},
+        io::{Read, Seek, SeekFrom, Write},
+        path::Path,
+        process,
+    };
+
+    use binsync::Manifest;
+
+    use binsync::RemoteManifest;
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
@@ -23,6 +27,7 @@ fn main() {
     }
 
     let manifest = Manifest::from_path(from);
+    let manifest = RemoteManifest::from_manifest(manifest);
     let manifest_data = bincode::serialize(&manifest).unwrap();
 
     if let Err(_) = fs::create_dir("out") {
@@ -35,20 +40,43 @@ fn main() {
         process::exit(1);
     }
 
-    for (file_info, chunks) in &manifest.files {
+    let mut chunks = HashMap::new();
+
+    for (file_info, file_chunks) in &manifest.source.files {
         let path = from.join(file_info);
+
         let mut file = File::open(path).unwrap();
 
-        for chunk in chunks {
+        for chunk in file_chunks {
             let mut buffer = vec![0; chunk.length as usize];
 
             file.seek(SeekFrom::Start(chunk.offset)).unwrap();
             file.read_exact(&mut buffer).unwrap();
 
-            let file_name = format!("out/{}.chunk", chunk.hash);
-            fs::write(file_name, buffer).unwrap();
+            chunks.insert(chunk.hash, buffer);
+        }
+    }
+
+    for pack in manifest.packs {
+        let file_name = format!("out/{}.binpack", pack.hash);
+        
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(file_name)
+            .unwrap();
+
+        for chunk_id in pack.chunks {
+            file.write_all(chunks.get_mut(&chunk_id).unwrap()).unwrap();
         }
     }
 
     println!("Output written to ./out");
+}
+
+#[cfg(not(feature = "network"))]
+fn main() {
+    println!(
+        "Network feature is not enabled. Use --features network when running to test this out."
+    );
 }

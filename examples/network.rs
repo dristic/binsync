@@ -2,7 +2,7 @@ extern crate binsync;
 
 #[cfg(feature = "network")]
 fn main() {
-    use std::{env, process};
+    use std::{env, process, time::Instant};
 
     let args: Vec<String> = env::args().collect();
 
@@ -11,16 +11,20 @@ fn main() {
         process::exit(1);
     }
 
+    let now = Instant::now();
+
     if let Err(e) = sync_network(args) {
         println!("Encountered error syncing {}", e);
         process::exit(1);
     }
+
+    println!("Sync took {}s", now.elapsed().as_secs());
 }
 
 #[cfg(feature = "network")]
 fn sync_network(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    use std::{path::Path};
-    use binsync::{Manifest, Syncer};
+    use binsync::{Syncer, RemoteManifest};
+    use std::path::Path;
 
     let url = reqwest::Url::parse(&args[1])?;
 
@@ -33,16 +37,18 @@ fn sync_network(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let response = reqwest::blocking::get(manifest_url)?;
     let data = response.bytes()?;
 
-    let manifest: Manifest = bincode::deserialize(&data)?;
-    let provider = binsync::RemoteChunkProvider::new(url.as_str());
+    let manifest: RemoteManifest = bincode::deserialize(&data)?;
+    let provider = binsync::RemoteChunkProvider::new(url.as_str(), &manifest)?;
 
-    let mut syncer = Syncer::new(to_path, provider, manifest);
+    let mut syncer = Syncer::new(to_path, provider, manifest.source);
     syncer.sync()?;
 
     Ok(())
 }
 
 #[cfg(not(feature = "network"))]
-fn main () {
-    println!("Network feature is not enabled. Use --features network when running to test this out.");
+fn main() {
+    println!(
+        "Network feature is not enabled. Use --features network when running to test this out."
+    );
 }

@@ -14,7 +14,7 @@ use crate::{
     sync::ThreadPool,
 };
 
-use super::Chunk;
+use super::{Chunk, AVG_CHUNK, MAX_CHUNK, MIN_CHUNK};
 
 /// Holds a list of files and which chunks exist inside those files in which
 /// order. The manifest is the source of the syncer allowing us to know what
@@ -72,7 +72,7 @@ impl Manifest {
 
             pool.execute(move || {
                 let contents = std::fs::read(path).unwrap();
-                let chunker = FastCDC::new(&contents, 16384, 32768, 65536);
+                let chunker = FastCDC::new(&contents, MIN_CHUNK, AVG_CHUNK, MAX_CHUNK);
 
                 for entry in chunker {
                     let end = entry.offset + entry.length;

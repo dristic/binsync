@@ -10,7 +10,7 @@ use fastcdc::FastCDC;
 
 use crate::{error::Error, Manifest};
 
-use super::{Chunk, ChunkProvider, Operation, SyncPlan};
+use super::{Chunk, ChunkProvider, Operation, SyncPlan, AVG_CHUNK, MAX_CHUNK, MIN_CHUNK};
 
 /// Uses a manifest and a provider to sync data to the destination.
 pub struct Syncer<'a, T: ChunkProvider> {
@@ -67,7 +67,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                 source_file
                     .read_to_end(&mut contents)
                     .map_err(|_| Error::AccessDenied)?;
-                let chunker = FastCDC::new(&contents, 16384, 32768, 65536);
+                let chunker = FastCDC::new(&contents, MIN_CHUNK, AVG_CHUNK, MAX_CHUNK);
 
                 for entry in chunker {
                     let end = entry.offset + entry.length;

@@ -3,10 +3,9 @@ use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    rc::Rc,
 };
 
-use super::{ChunkProvider, Operation, SyncPlan};
+use super::{ChunkId, ChunkProvider, Operation, SyncPlan};
 
 use crate::BinsyncError;
 
@@ -15,6 +14,7 @@ struct ProviderChunk {
     offset: u64,
     length: u64,
     ref_count: u32,
+    data: Option<Vec<u8>>,
 }
 
 /// A caching chunk provider for local transfers. Attempts to read and save
@@ -22,8 +22,8 @@ struct ProviderChunk {
 /// are used more than once.
 pub struct CachingChunkProvider {
     source: PathBuf,
-    chunks: HashMap<u64, ProviderChunk>,
-    cache: HashMap<u64, Rc<Vec<u8>>>,
+    chunks: HashMap<ChunkId, ProviderChunk>,
+    empty_chunk: Option<ChunkId>,
 }
 
 impl CachingChunkProvider {
@@ -31,7 +31,7 @@ impl CachingChunkProvider {
         CachingChunkProvider {
             source: PathBuf::from(path.as_ref()),
             chunks: HashMap::new(),
-            cache: HashMap::new(),
+            empty_chunk: None,
         }
     }
 }
@@ -53,6 +53,7 @@ impl ChunkProvider for CachingChunkProvider {
                                     offset: chunk.offset,
                                     length: chunk.length,
                                     ref_count: 1,
+                                    data: None,
                                 },
                             );
                         }
@@ -62,37 +63,37 @@ impl ChunkProvider for CachingChunkProvider {
         }
     }
 
-    fn get_chunk(&mut self, key: &u64) -> Result<Rc<Vec<u8>>, BinsyncError> {
-        if let Some(chunk_info) = self.chunks.get_mut(key) {
-            chunk_info.ref_count = chunk_info.ref_count - 1;
+    fn get_chunk<'a>(&'a mut self, key: &u64) -> Result<&'a [u8], BinsyncError> {
+        if let Some(chunk_id) = self.empty_chunk {
+            self.chunks.remove(&chunk_id);
+        }
+
+        if let Some(chunk) = self.chunks.get_mut(key) {
+            chunk.ref_count = chunk.ref_count - 1;
+
+            // If this is no longer needed set it for deletion.
+            if chunk.ref_count == 0 {
+                self.empty_chunk = Some(key.clone());
+            }
 
             // First check the cache.
-            if let Some(data) = self.cache.get(key) {
-                let data = Rc::clone(data);
+            if let None = chunk.data {
+                // Not in the cache so lets read it.
+                let mut file = File::open(&chunk.file).map_err(|_| BinsyncError::AccessDenied)?;
+                let mut buffer = vec![0; chunk.length as usize];
 
-                if chunk_info.ref_count == 0 {
-                    self.cache.remove(key);
-                }
+                file.seek(SeekFrom::Start(chunk.offset))
+                    .map_err(|_| BinsyncError::AccessDenied)?;
+                file.read_exact(&mut buffer)
+                    .map_err(|_| BinsyncError::AccessDenied)?;
 
-                return Ok(data);
+                chunk.data = Some(buffer);
             }
 
-            // Not in the cache so lets read it.
-            let mut file = File::open(&chunk_info.file).map_err(|_| BinsyncError::AccessDenied)?;
-            let mut buffer = vec![0; chunk_info.length as usize];
-
-            file.seek(SeekFrom::Start(chunk_info.offset))
-                .map_err(|_| BinsyncError::AccessDenied)?;
-            file.read_exact(&mut buffer)
-                .map_err(|_| BinsyncError::AccessDenied)?;
-
-            let data = Rc::new(buffer);
-
-            if chunk_info.ref_count != 0 {
-                self.cache.insert(key.clone(), Rc::clone(&data));
+            // It will either be cached or just fetched.
+            if let Some(data) = &chunk.data {
+                return Ok(&data[..]);
             }
-
-            return Ok(data);
         }
 
         // Not sure why this is requesting a chunk not in the plan.

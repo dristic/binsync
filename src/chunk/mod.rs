@@ -5,17 +5,26 @@ pub mod sync;
 #[cfg(feature = "network")]
 pub mod network;
 
-use std::{collections::HashMap, path::PathBuf, rc::Rc};
+use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::BinsyncError;
 
+/// Constant values for the CDC chunker. The producer and consumer need to use
+/// the same values so be careful changing these.
+const MIN_CHUNK: usize = 32768;
+const AVG_CHUNK: usize = 65536;
+const MAX_CHUNK: usize = 131072;
+
+/// ChunkId is defined for the entire crate in a single location.
+type ChunkId = u64;
+
 /// The most basic building block. Holds the precomputed hash identifier along
 /// with the offset in the file and length of the chunk.
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Chunk {
-    pub hash: u64,
+    pub hash: ChunkId,
     pub offset: u64,
     pub length: u64,
 }
@@ -90,5 +99,5 @@ pub trait ChunkProvider {
 
     /// Gets the raw data of the chunk. The provider may choose to modify its
     /// internal cache when fetching a chunk.
-    fn get_chunk(&mut self, key: &u64) -> Result<Rc<Vec<u8>>, BinsyncError>;
+    fn get_chunk<'a>(&'a mut self, key: &u64) -> Result<&'a [u8], BinsyncError>;
 }

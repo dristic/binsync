@@ -1,7 +1,6 @@
 use std::{
-    collections::HashMap,
     convert::TryInto,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -16,18 +15,25 @@ use crate::{
 
 use super::{Chunk, AVG_CHUNK, MAX_CHUNK, MIN_CHUNK};
 
+/// Information about a file and which chunks it contains.
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct FileChunkInfo {
+    pub path: PathBuf,
+    pub chunks: Vec<Chunk>,
+}
+
 /// Holds a list of files and which chunks exist inside those files in which
 /// order. The manifest is the source of the syncer allowing us to know what
 /// we should be syncing to.
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Manifest {
-    pub files: HashMap<String, Vec<Chunk>>,
+    pub files: Vec<FileChunkInfo>,
 }
 
 impl Manifest {
     pub fn new() -> Manifest {
         Manifest {
-            files: HashMap::new(),
+            files: Vec::new(),
         }
     }
 
@@ -74,6 +80,11 @@ impl Manifest {
                 let contents = std::fs::read(path).unwrap();
                 let chunker = FastCDC::new(&contents, MIN_CHUNK, AVG_CHUNK, MAX_CHUNK);
 
+                let mut file_chunk_info = FileChunkInfo {
+                    path: PathBuf::from(key),
+                    chunks: Vec::new(),
+                };
+
                 for entry in chunker {
                     let end = entry.offset + entry.length;
                     let chunk = &contents[entry.offset..end];
@@ -81,28 +92,23 @@ impl Manifest {
                     let digest = md5::compute(chunk);
                     let hash = u64::from_le_bytes(digest[0..8].try_into().unwrap());
 
-                    let mut manifest = manifest.lock().unwrap();
-
-                    manifest.add_chunk(&key, hash, entry.offset as u64, entry.length as u64);
+                    file_chunk_info.chunks.push(Chunk {
+                        hash,
+                        offset: entry.offset as u64,
+                        length: entry.length as u64,
+                    });
                 }
+
+                manifest.lock().unwrap().files.push(file_chunk_info);
             });
         }
 
         drop(pool);
 
-        Arc::try_unwrap(manifest).unwrap().into_inner().unwrap()
-    }
+        let mut manifest = Arc::try_unwrap(manifest).unwrap().into_inner().unwrap();
 
-    fn add_chunk(&mut self, path: &str, hash: u64, offset: u64, length: u64) {
-        let key = path.to_string();
-        if !self.files.contains_key(&key) {
-            self.files.insert(key, Vec::new());
-        }
+        manifest.files.sort_by_cached_key(|k| k.path.clone());
 
-        self.files.get_mut(&path.to_string()).unwrap().push(Chunk {
-            hash,
-            offset,
-            length,
-        });
+        manifest
     }
 }

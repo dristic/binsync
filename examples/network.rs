@@ -23,7 +23,7 @@ fn main() {
 
 #[cfg(feature = "network")]
 fn sync_network(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    use binsync::{Syncer, RemoteManifest};
+    use binsync::{RemoteManifest, Syncer};
     use std::path::Path;
 
     let url = reqwest::Url::parse(&args[1])?;

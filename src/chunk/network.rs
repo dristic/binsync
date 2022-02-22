@@ -1,9 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     convert::TryInto,
-    sync::{
-        mpsc, Arc, Condvar, Mutex,
-    },
+    sync::{mpsc, Arc, Condvar, Mutex},
     thread::{self, JoinHandle},
 };
 
@@ -51,8 +49,8 @@ impl RemoteManifest {
         let mut bytes: Vec<u8> = Vec::new();
         let mut chunks: Vec<ChunkId> = Vec::new();
 
-        for (_, file_chunks) in &manifest.files {
-            for chunk in file_chunks {
+        for file_chunk_info in &manifest.files {
+            for chunk in &file_chunk_info.chunks {
                 // If we do not have space save off a new pack.
                 if length + chunk.length > size as u64 {
                     let digest = md5::compute(bytes);
@@ -248,14 +246,17 @@ pub struct RemoteChunkProvider {
 const CACHE_LIMIT: u64 = 104857600; // 100MB
 
 impl RemoteChunkProvider {
-    pub fn new(base_url: &str, manifest: &RemoteManifest) -> Result<RemoteChunkProvider, BinsyncError> {
+    pub fn new(
+        base_url: &str,
+        manifest: &RemoteManifest,
+    ) -> Result<RemoteChunkProvider, BinsyncError> {
         let downloader = PackDownloader::with_size(CACHE_LIMIT, base_url);
         let mut chunk_map = HashMap::new();
 
         // Build a local map of chunk_id => chunk for use in the next step.
         let mut chunks = HashMap::new();
-        for (_, file_chunks) in &manifest.source.files {
-            for chunk in file_chunks {
+        for file_chunk_info in &manifest.source.files {
+            for chunk in &file_chunk_info.chunks {
                 chunks.insert(chunk.hash, chunk);
             }
         }
@@ -267,14 +268,17 @@ impl RemoteChunkProvider {
             for chunk_id in &pack.chunks {
                 match chunks.get(chunk_id) {
                     Some(chunk) => {
-                        chunk_map.insert(chunk_id.clone(), ChunkPackInfo {
-                            pack_id: pack.hash,
-                            offset,
-                            length: chunk.length,
-                        });
+                        chunk_map.insert(
+                            chunk_id.clone(),
+                            ChunkPackInfo {
+                                pack_id: pack.hash,
+                                offset,
+                                length: chunk.length,
+                            },
+                        );
 
                         offset += chunk.length;
-                    },
+                    }
                     None => return Err(BinsyncError::ChunkNotFound(chunk_id.clone())),
                 }
             }

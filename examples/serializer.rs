@@ -42,12 +42,12 @@ fn main() {
 
     let mut chunks = HashMap::new();
 
-    for (file_info, file_chunks) in &manifest.source.files {
-        let path = from.join(file_info);
+    for file_chunk_info in &manifest.source.files {
+        let path = from.join(&file_chunk_info.path);
 
         let mut file = File::open(path).unwrap();
 
-        for chunk in file_chunks {
+        for chunk in &file_chunk_info.chunks {
             let mut buffer = vec![0; chunk.length as usize];
 
             file.seek(SeekFrom::Start(chunk.offset)).unwrap();
@@ -59,7 +59,7 @@ fn main() {
 
     for pack in manifest.packs {
         let file_name = format!("out/{}.binpack", pack.hash);
-        
+
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)

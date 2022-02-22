@@ -48,9 +48,9 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
         // TODO: We could parallelize this per-file or per-slice to get better
         // usage of the CPU cores and always be utilizing disk I/O
-        for (file_path, chunks) in &self.manifest.files {
+        for file_chunk_info in &self.manifest.files {
             let mut operations = Vec::new();
-            let path = self.destination.join(Path::new(&file_path));
+            let path = self.destination.join(&file_chunk_info.path);
 
             let mut have_chunks = HashMap::new();
 
@@ -80,7 +80,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                 }
             }
 
-            for chunk in chunks.iter() {
+            for chunk in file_chunk_info.chunks.iter() {
                 match have_chunks.get(&chunk.hash) {
                     Some(entry) => {
                         if entry == chunk {
@@ -116,7 +116,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
             if !should_skip {
                 plan.operations
-                    .insert(Path::new(&file_path).to_path_buf(), operations);
+                    .insert(file_chunk_info.path.clone(), operations);
                 plan.total_ops = total_ops;
             }
         }

@@ -32,9 +32,7 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn new() -> Manifest {
-        Manifest {
-            files: Vec::new(),
-        }
+        Manifest { files: Vec::new() }
     }
 
     /// Generates a manifest using the specified path as the root.

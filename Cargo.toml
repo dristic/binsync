@@ -1,9 +1,9 @@
 [package]
 name = "binsync"
 description = "A library for syncing binary files between two locations."
-version = "0.0.2"
+version = "0.0.3"
 license = "Apache-2.0"
-edition = "2018"
+edition = "2021"
 repository = "https://github.com/dristic/binsync"
 readme = "README.md"
 exclude = ["examples/*", ".github/"]

@@ -16,6 +16,7 @@ indicatif = "0.16.2"
 md5 = "0.7.0"
 reqwest = { version = "0.11.9", optional = true, features = ["blocking"] }
 serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0.30"
 walkdir = "2"
 
 [dev-dependencies]

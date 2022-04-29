@@ -40,7 +40,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
     /// of what files should update with a list of operations for each file.
     pub fn plan(&self) -> Result<SyncPlan, Error> {
         let mut plan = SyncPlan {
-            operations: HashMap::new(),
+            operations: Vec::new(),
             total_ops: 0,
         };
 
@@ -116,7 +116,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
 
             if !should_skip {
                 plan.operations
-                    .insert(file_chunk_info.path.clone(), operations);
+                    .push((file_chunk_info.path.clone(), operations));
                 plan.total_ops = total_ops;
             }
         }
@@ -188,7 +188,7 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
                     Operation::Copy(chunk) => {
                         let data = have_chunks
                             .get(&chunk.hash)
-                            .ok_or_else(|| Error::Unspecified)?;
+                            .ok_or_else(|| Error::ChunkNotFound(chunk.hash))?;
 
                         writer.write_all(data).map_err(|_| Error::AccessDenied)?;
                     }

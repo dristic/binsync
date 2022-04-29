@@ -5,7 +5,7 @@ pub mod sync;
 #[cfg(feature = "network")]
 pub mod network;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -54,12 +54,13 @@ pub struct FileList {
     pub files: Vec<FileInfo>,
 }
 
-/// When planning a sync instead of performing it directly this is used to
-/// describe the operations needed to sync two folders together.
+/// This describes the operations we need to take in order to transform the
+/// source into the destination. All operations are performed in-order but
+/// may be multi-threaded to speed up syncing.
 pub struct SyncPlan {
     /// Map of files that need to be transformed and what operations we need to
     /// perform on them.
-    pub operations: HashMap<PathBuf, Vec<Operation>>,
+    pub operations: Vec<(PathBuf, Vec<Operation>)>,
 
     /// Total number of operations in the plan.
     pub total_ops: u32,

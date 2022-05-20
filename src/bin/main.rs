@@ -10,27 +10,30 @@ use std::{
 };
 
 use binsync::{generate_manifest, CachingChunkProvider, Syncer};
-use clap::{App, Arg, SubCommand};
+use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
+
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Sync { from: String, to: String },
+    Generate { from: String },
+}
 
 /// A command-line interface for the crate. Allows you to run various commands
 /// without having to compile your own rust program and inspect the outputs.
 fn main() {
-    let matches = App::new("Binsync")
-        .version("1.0")
-        .subcommand(
-            SubCommand::with_name("sync")
-                .arg(Arg::with_name("FROM").required(true))
-                .arg(Arg::with_name("TO").required(true)),
-        )
-        .subcommand(SubCommand::with_name("generate").arg(Arg::with_name("FROM").required(true)))
-        .get_matches();
+    let cli = Cli::parse();
 
-    match matches.subcommand() {
-        ("sync", Some(m)) => {
-            let from = String::from(m.value_of("FROM").unwrap());
-            let to = String::from(m.value_of("TO").unwrap());
-
+    match &cli.command {
+        Commands::Sync { from, to } => {
             let now = Instant::now();
 
             println!("[1/2] Generating manifest from {}", from);
@@ -97,9 +100,7 @@ fn main() {
 
             println!("Sync completed in {}s", now.elapsed().as_secs());
         }
-        ("generate", Some(m)) => {
-            let from = String::from(m.value_of("FROM").unwrap());
-
+        Commands::Generate { from } => {
             let now = Instant::now();
 
             println!("[1/1] Generating manifest from {}", from);
@@ -139,10 +140,6 @@ fn main() {
             handle.join().unwrap();
 
             println!("Manifest generated in {}s", now.elapsed().as_secs());
-        }
-        _ => {
-            eprintln!("Command not found.");
-            process::exit(1);
         }
     }
 }

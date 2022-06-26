@@ -17,4 +17,7 @@ pub enum Error {
 
     #[error("Unspecified: {0}")]
     Unspecified(String),
+
+    #[error(transparent)]
+    IOError(#[from] std::io::Error),
 }

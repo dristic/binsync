@@ -144,14 +144,13 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
             let parent = path
                 .parent()
                 .ok_or_else(|| Error::FileNotFound(path.to_path_buf()))?;
-            fs::create_dir_all(&parent).map_err(|_| Error::AccessDenied)?;
+            fs::create_dir_all(&parent)?;
 
             let mut source_file = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
-                .open(path)
-                .map_err(|_| Error::AccessDenied)?;
+                .open(path)?;
 
             let mut have_chunks = HashMap::new();
 
@@ -159,13 +158,11 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
             for operation in operations {
                 if let Operation::Copy(chunk) = operation {
                     source_file
-                        .seek(SeekFrom::Start(chunk.offset))
-                        .map_err(|_| Error::AccessDenied)?;
+                        .seek(SeekFrom::Start(chunk.offset))?;
 
                     let mut data = vec![0; chunk.length as usize];
                     source_file
-                        .read_exact(&mut data)
-                        .map_err(|_| Error::AccessDenied)?;
+                        .read_exact(&mut data)?;
 
                     have_chunks.insert(chunk.hash, data);
                 }

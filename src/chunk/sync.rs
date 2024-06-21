@@ -157,12 +157,10 @@ impl<'a, T: ChunkProvider> Syncer<'a, T> {
             // First load all the chunk copies into memory.
             for operation in operations {
                 if let Operation::Copy(chunk) = operation {
-                    source_file
-                        .seek(SeekFrom::Start(chunk.offset))?;
+                    source_file.seek(SeekFrom::Start(chunk.offset))?;
 
                     let mut data = vec![0; chunk.length as usize];
-                    source_file
-                        .read_exact(&mut data)?;
+                    source_file.read_exact(&mut data)?;
 
                     have_chunks.insert(chunk.hash, data);
                 }

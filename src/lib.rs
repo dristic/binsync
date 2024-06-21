@@ -4,7 +4,7 @@
 //! two locations. The underlying algorithm used is based on fast content
 //! defined chunking. This works by first generating a `Manifest` that lists
 //! the files and chunks in the source folder. Using the `sync` function pointed
-//! at an empty or already populated destination folder the libray will migrate
+//! at an empty or already populated destination folder the library will migrate
 //! the contents of the destination to look like the source.
 //!
 //! ```rust,no_run
@@ -25,7 +25,12 @@ mod sync;
 #[cfg(feature = "network")]
 pub use chunk::network::{RemoteChunkProvider, RemoteManifest};
 
-pub use chunk::{manifest::Manifest, provider::CachingChunkProvider, sync::Syncer, ChunkProvider};
+pub use chunk::{
+    manifest::{FileChunkInfo, Manifest},
+    provider::CachingChunkProvider,
+    sync::Syncer,
+    Chunk, ChunkProvider,
+};
 pub use error::Error as BinsyncError;
 use std::path::Path;
 
